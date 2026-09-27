@@ -105,6 +105,43 @@ struct FocusedText {
         return true
     }
 
+    func selectForPaste(range: NSRange) -> Bool {
+        guard selection.length == 0,
+              range.location >= 0, range.length > 0,
+              range.location + range.length <= (value as NSString).length,
+              isStillCurrent() else { return false }
+        var settable = DarwinBoolean(false)
+        guard AXUIElementIsAttributeSettable(element, kAXSelectedTextRangeAttribute as CFString, &settable) == .success,
+              settable.boolValue else { return false }
+        var selectedRange = CFRange(location: range.location, length: range.length)
+        guard let selectedValue = AXValueCreate(.cfRange, &selectedRange),
+              AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selectedValue) == .success else {
+            return false
+        }
+        var currentRange: CFTypeRef?
+        var confirmedRange = CFRange(location: 0, length: 0)
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &currentRange) == .success,
+              let currentRange, CFGetTypeID(currentRange) == AXValueGetTypeID(),
+              AXValueGetValue(currentRange as! AXValue, .cfRange, &confirmedRange),
+              confirmedRange.location == range.location,
+              confirmedRange.length == range.length else {
+            restoreCaretIfUnchanged()
+            return false
+        }
+        return true
+    }
+
+    func restoreCaretIfUnchanged() {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else { return }
+        var actualValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &actualValue) == .success,
+              let actualValue = actualValue as? String, actualValue == value else { return }
+        var caret = CFRange(location: selection.location, length: 0)
+        if let caretValue = AXValueCreate(.cfRange, &caret) {
+            AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, caretValue)
+        }
+    }
+
     var prefix: String {
         (value as NSString).substring(to: selection.location)
     }

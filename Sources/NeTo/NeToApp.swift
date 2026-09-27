@@ -332,7 +332,7 @@ final class NeToModel: ObservableObject {
         guard let processID, !isAutomaticRepairExcluded(processID),
               let snapshot = FocusedText.read(), snapshot.processID == processID,
               snapshot.selection.length == 0,
-              let delimiter = snapshot.prefix.last, delimiter == " " || delimiter == "\n",
+              let delimiter = snapshot.prefix.last, WordBoundary.isCompletionDelimiter(delimiter),
               let word = WordBoundary.precedingWord(in: snapshot.prefix, allowDelimiter: true),
               let conversion = AutomaticDecision.candidate(for: word),
               snapshot.selection.location >= word.utf16.count + 1 else { return }
@@ -373,27 +373,105 @@ final class NeToModel: ObservableObject {
     }
 
     private func repairRecentCompletedWordAutomatically(in processID: pid_t?) {
-        guard let processID, !isAutomaticRepairExcluded(processID),
-              let snapshot = FocusedText.read(), snapshot.processID == processID,
+        guard let processID, !isAutomaticRepairExcluded(processID) else { return }
+        guard let snapshot = FocusedText.read(), snapshot.processID == processID,
               snapshot.selection.length == 0 else { return }
         for candidate in WordBoundary.recentCompletedWords(in: snapshot.prefix) {
             guard let conversion = AutomaticDecision.candidate(for: candidate.word) else { continue }
             let location = snapshot.selection.location
                 - candidate.trailing.utf16.count - candidate.word.utf16.count
-            guard location >= 0,
-                  snapshot.replaceDirectly(
-                    range: NSRange(location: location, length: candidate.word.utf16.count),
-                    with: conversion.output
-                  ) else { return }
-            confirmAutomaticRepair(
-                snapshot: snapshot,
-                range: NSRange(location: location, length: candidate.word.utf16.count),
-                output: conversion.output,
-                source: conversion.source,
-                target: conversion.target,
-                selectLayout: false
-            )
+            guard location >= 0 else { return }
+            let range = NSRange(location: location, length: candidate.word.utf16.count)
+            if snapshot.replaceDirectly(range: range, with: conversion.output) {
+                confirmAutomaticRepair(
+                    snapshot: snapshot, range: range, output: conversion.output,
+                    source: conversion.source, target: conversion.target, selectLayout: false
+                )
+            } else {
+                let expectedRevision = revision
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(80))
+                    guard let self, self.revision == expectedRevision,
+                          snapshot.isStillCurrent() else { return }
+                    self.pasteAutomaticRepair(snapshot: snapshot, range: range, output: conversion.output,
+                                              source: conversion.source, target: conversion.target,
+                                              trailing: candidate.trailing)
+                }
+            }
             return
+        }
+    }
+
+    private func pasteAutomaticRepair(snapshot: FocusedText, range: NSRange, output: String,
+                                      source: KeyboardLanguage, target: KeyboardLanguage,
+                                      trailing: String) {
+        guard snapshot.selectForPaste(range: range) else {
+            repairUsingKeyboardSelection(snapshot: snapshot, range: range, output: output,
+                                         source: source, target: target, trailing: trailing)
+            return
+        }
+        guard let clipboard = KeyboardReplacement.paste(output) else {
+            snapshot.restoreCaretIfUnchanged()
+            return
+        }
+        let expectedValue = (snapshot.value as NSString).replacingCharacters(in: range, with: output)
+        let expectedCaret = snapshot.selection.location + output.utf16.count - range.length
+        let expectedRevision = revision
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            if let self, self.revision == expectedRevision,
+               let current = FocusedText.read(), current.processID == snapshot.processID,
+               current.value == expectedValue,
+               current.selection.location == expectedCaret,
+               current.selection.length == 0 {
+                if trailing.count == 1, self.keyboard.currentLayout == source {
+                    self.keyboard.select(target)
+                }
+                self.currentLayout = self.keyboard.currentLayout
+                self.status = .repaired(source, target)
+                self.playSwitchSoundIfEnabled()
+            } else {
+                snapshot.restoreCaretIfUnchanged()
+            }
+            try? await Task.sleep(for: .milliseconds(230))
+            clipboard.restoreIfUnchanged()
+        }
+    }
+
+    private func repairUsingKeyboardSelection(snapshot: FocusedText, range: NSRange, output: String,
+                                              source: KeyboardLanguage, target: KeyboardLanguage,
+                                              trailing: String) {
+        guard trailing.count == 1,
+              trailing.first.map(WordBoundary.isCompletionDelimiter) == true,
+              KeyboardReplacement.selectPreviousCharacters(trailing: 1, length: range.length) else { return }
+        let expectedRevision = revision
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard let self, self.revision == expectedRevision,
+                  let selected = FocusedText.read(), selected.processID == snapshot.processID,
+                  selected.value == snapshot.value,
+                  selected.selection.location == range.location,
+                  selected.selection.length == range.length else { return }
+            KeyboardReplacement.replace(backspaces: 0, with: output)
+            let expectedValue = (snapshot.value as NSString).replacingCharacters(in: range, with: output)
+            let expectedCaret = range.location + output.utf16.count
+            try? await Task.sleep(for: .milliseconds(120))
+            guard self.revision == expectedRevision,
+                  let replaced = FocusedText.read(), replaced.processID == snapshot.processID,
+                  replaced.value == expectedValue,
+                  replaced.selection.location == expectedCaret,
+                  replaced.selection.length == 0 else { return }
+            KeyboardReplacement.moveRight()
+            try? await Task.sleep(for: .milliseconds(80))
+            guard self.revision == expectedRevision,
+                  let restored = FocusedText.read(), restored.processID == snapshot.processID,
+                  restored.value == expectedValue,
+                  restored.selection.location == expectedCaret + trailing.utf16.count,
+                  restored.selection.length == 0 else { return }
+            if self.keyboard.currentLayout == source { self.keyboard.select(target) }
+            self.currentLayout = self.keyboard.currentLayout
+            self.status = .repaired(source, target)
+            self.playSwitchSoundIfEnabled()
         }
     }
 

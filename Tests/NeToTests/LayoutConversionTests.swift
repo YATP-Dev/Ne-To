@@ -14,6 +14,13 @@ import Testing
     #expect(WordBoundary.precedingWord(in: "mail@example.com ", allowDelimiter: true) == nil)
     #expect(WordBoundary.precedingWord(in: "https://example.com ", allowDelimiter: true) == nil)
     #expect(WordBoundary.precedingWord(in: "ghbdtn ", allowDelimiter: true) == "ghbdtn")
+    for separator in ["\u{00A0}", "\u{202F}"] {
+        let prefix = "ghbdtn" + separator
+        #expect(WordBoundary.precedingWord(in: prefix, allowDelimiter: true) == "ghbdtn")
+        let recent = WordBoundary.recentCompletedWords(in: prefix)
+        #expect(recent.first?.word == "ghbdtn")
+        #expect(recent.first?.trailing == separator)
+    }
     #expect(WordBoundary.precedingWord(in: "e;by ", allowDelimiter: true) == "e;by")
     #expect(WordBoundary.precedingWord(in: "k.lb", allowDelimiter: false) == "k.lb")
     #expect(AutomaticDecision.candidate(for: "e;by")?.output == "ужин")

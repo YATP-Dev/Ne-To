@@ -41,12 +41,16 @@ enum LayoutConversion {
 }
 
 enum WordBoundary {
+    static func isCompletionDelimiter(_ character: Character) -> Bool {
+        character == " " || character == "\u{00A0}" || character == "\u{202F}" || character == "\n"
+    }
+
     static func recentCompletedWords(in prefix: String, maxTrailingCharacters: Int = 32) -> [(word: String, trailing: String)] {
         let characters = Array(prefix)
         guard !characters.isEmpty else { return [] }
         var result: [(word: String, trailing: String)] = []
         for index in characters.indices.reversed() {
-            guard characters[index] == " " || characters[index] == "\n" else { continue }
+            guard isCompletionDelimiter(characters[index]) else { continue }
             let trailing = String(characters[index...])
             guard trailing.count <= maxTrailingCharacters else { break }
             if let word = precedingWord(in: String(characters[...index]), allowDelimiter: true) {
@@ -59,7 +63,7 @@ enum WordBoundary {
     static func precedingWord(in prefix: String, allowDelimiter: Bool) -> String? {
         var characters = Array(prefix)
         if allowDelimiter {
-            guard let last = characters.last, last == " " || last == "\n" else { return nil }
+            guard let last = characters.last, isCompletionDelimiter(last) else { return nil }
             characters.removeLast()
         }
         // Russian letters such as ж, х, б, and ю land on punctuation keys
