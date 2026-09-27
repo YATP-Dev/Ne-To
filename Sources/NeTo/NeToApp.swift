@@ -50,6 +50,7 @@ final class NeToModel: ObservableObject {
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginMessage: String?
     @Published private(set) var customWords = CustomDictionary.words
+    @Published private(set) var excludedApplications = ApplicationExclusions.applications
     @Published private(set) var previousWordShortcut: ManualShortcut
     @Published private(set) var selectionShortcut: ManualShortcut
     @Published private(set) var recordingAction: ManualAction?
@@ -212,6 +213,23 @@ final class NeToModel: ObservableObject {
         customWords = CustomDictionary.words
     }
 
+    @discardableResult
+    func addExcludedApplications(_ urls: [URL]) -> Bool {
+        guard ApplicationExclusions.add(urls) else { return false }
+        excludedApplications = ApplicationExclusions.applications
+        return true
+    }
+
+    func removeExcludedApplication(_ bundleID: String) {
+        ApplicationExclusions.remove(bundleID: bundleID)
+        excludedApplications = ApplicationExclusions.applications
+    }
+
+    private func isAutomaticRepairExcluded(_ processID: pid_t) -> Bool {
+        ApplicationExclusions.contains(bundleID: NSRunningApplication(processIdentifier: processID)?.bundleIdentifier,
+                                       in: excludedApplications)
+    }
+
 
     func refreshPermissions() {
         hasAccessibilityAccess = AXIsProcessTrusted()
@@ -279,7 +297,8 @@ final class NeToModel: ObservableObject {
     }
 
     private func repairAutomatically(in processID: pid_t?) {
-        guard let processID, let snapshot = FocusedText.read(), snapshot.processID == processID,
+        guard let processID, !isAutomaticRepairExcluded(processID),
+              let snapshot = FocusedText.read(), snapshot.processID == processID,
               snapshot.selection.length == 0,
               let delimiter = snapshot.prefix.last, delimiter == " " || delimiter == "\n",
               let word = WordBoundary.precedingWord(in: snapshot.prefix, allowDelimiter: true),
@@ -294,7 +313,8 @@ final class NeToModel: ObservableObject {
 
     private func repairPhraseAutomatically(in processID: pid_t?) {
         guard CGEventSource.flagsState(.combinedSessionState).intersection(KeyChord.modifierMask).isEmpty,
-              let processID, let snapshot = FocusedText.read(), snapshot.processID == processID,
+              let processID, !isAutomaticRepairExcluded(processID),
+              let snapshot = FocusedText.read(), snapshot.processID == processID,
               snapshot.selection.length == 0,
               let line = snapshot.prefix.split(separator: "\n", omittingEmptySubsequences: false).last,
               let conversion = PhraseDecision.candidate(for: String(line)),

@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var model: NeToModel
     @State private var newWord = ""
     @State private var dictionaryMessage: String?
+    @State private var applicationMessage: String?
 
     var body: some View {
         ScrollView {
@@ -37,7 +39,7 @@ struct SettingsView: View {
                     Text("Custom words stay on this Mac. They are protected from automatic replacement and can be accepted as converted words.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
-                        TextField("Add a word or brand", text: $newWord)
+                        TextField("Добавьте слово", text: $newWord)
                             .onSubmit(addWord)
                         Button("Add", action: addWord)
                             .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -74,6 +76,48 @@ struct SettingsView: View {
                     }
                     .frame(height: 116)
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                }
+
+                Divider()
+
+                settingsGroup("Automatic repair exceptions") {
+                    Text("Ne-To will not change the keyboard layout automatically in these apps. Manual repair still works.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Add Application…", action: chooseApplications)
+                    if let applicationMessage {
+                        Text(applicationMessage).font(.caption).foregroundStyle(.red)
+                    }
+                    if model.excludedApplications.isEmpty {
+                        Text("No excluded applications")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                ForEach(model.excludedApplications) { application in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(application.name)
+                                            Text(application.bundleID)
+                                                .font(.caption2).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Button {
+                                            model.removeExcludedApplication(application.bundleID)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Remove \(application.name)")
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    if application.id != model.excludedApplications.last?.id { Divider() }
+                                }
+                            }
+                        }
+                        .frame(height: 110)
+                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
 
                 Divider()
@@ -134,6 +178,20 @@ struct SettingsView: View {
         } else {
             dictionaryMessage = "Enter a new word of 2–40 letters."
         }
+    }
+
+    private func chooseApplications() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK else { return }
+        applicationMessage = model.addExcludedApplications(panel.urls)
+            ? nil
+            : "Choose an application with a valid bundle identifier."
     }
 }
 
