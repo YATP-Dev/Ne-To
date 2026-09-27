@@ -12,6 +12,7 @@ enum KeyboardReplacement {
             guard let pointer = buffer.baseAddress else { return }
             for down in [true, false] {
                 guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down) else { continue }
+                event.flags = []
                 event.setIntegerValueField(.eventSourceUserData, value: eventTag)
                 event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: pointer)
                 event.post(tap: .cghidEventTap)
@@ -22,6 +23,7 @@ enum KeyboardReplacement {
     private static func postKey(_ code: CGKeyCode) {
         for down in [true, false] {
             guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down) else { continue }
+            event.flags = []
             event.setIntegerValueField(.eventSourceUserData, value: eventTag)
             event.post(tap: .cghidEventTap)
         }

@@ -50,12 +50,10 @@ final class NeToModel: ObservableObject {
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginMessage: String?
     @Published private(set) var customWords = CustomDictionary.words
-    @Published var previousWordShortcut: DoubleTapModifier {
-        didSet { UserDefaults.standard.set(previousWordShortcut.rawValue, forKey: "previousWordShortcut") }
-    }
-    @Published var selectionShortcut: DoubleTapModifier {
-        didSet { UserDefaults.standard.set(selectionShortcut.rawValue, forKey: "selectionShortcut") }
-    }
+    @Published private(set) var previousWordShortcut: ManualShortcut
+    @Published private(set) var selectionShortcut: ManualShortcut
+    @Published private(set) var recordingAction: ManualAction?
+    @Published private(set) var shortcutMessage: String?
 
     var hasRequiredAccess: Bool { hasAccessibilityAccess && hasInputMonitoringAccess }
 
@@ -64,14 +62,19 @@ final class NeToModel: ObservableObject {
     private var flagsMonitor: Any?
     private var layoutTimer: Timer?
     private var accessTimer: Timer?
+    private var shortcutTap: ShortcutEventTap?
+    private var recordingMonitor: Any?
+    private var recordingDoubleTap = DoubleTapDetector()
     private var doubleTap = DoubleTapDetector()
     private var revision = 0
     private var started = false
 
     init() {
         automaticRepair = UserDefaults.standard.object(forKey: "automaticRepair") as? Bool ?? true
-        previousWordShortcut = DoubleTapModifier(rawValue: UserDefaults.standard.string(forKey: "previousWordShortcut") ?? "") ?? .shift
-        selectionShortcut = DoubleTapModifier(rawValue: UserDefaults.standard.string(forKey: "selectionShortcut") ?? "") ?? .shift
+        previousWordShortcut = Self.savedShortcut(for: .previousWord)
+        selectionShortcut = Self.savedShortcut(for: .selection)
+        UserDefaults.standard.removeObject(forKey: "previousWordShortcut")
+        UserDefaults.standard.removeObject(forKey: "selectionShortcut")
         UserDefaults.standard.removeObject(forKey: "hotKey.1")
         UserDefaults.standard.removeObject(forKey: "hotKey.2")
         currentLayout = keyboard.currentLayout
@@ -96,8 +99,87 @@ final class NeToModel: ObservableObject {
         accessTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPermissions() }
         }
+        shortcutTap = ShortcutEventTap { [weak self] chord in
+            self?.repairManually(triggeredBy: .chord(chord))
+        }
+        if shortcutTap?.update(chords: configuredChords) == false {
+            shortcutMessage = "The global shortcut could not start. Check Accessibility and Input Monitoring access."
+        }
         refreshPermissions()
         refreshLaunchAtLogin()
+    }
+
+    private static func savedShortcut(for action: ManualAction) -> ManualShortcut {
+        if let data = UserDefaults.standard.data(forKey: "manualShortcut.\(action.rawValue)"),
+           let shortcut = try? JSONDecoder().decode(ManualShortcut.self, from: data) {
+            return shortcut
+        }
+        let oldKey = action == .previousWord ? "previousWordShortcut" : "selectionShortcut"
+        let modifier = DoubleTapModifier(rawValue: UserDefaults.standard.string(forKey: oldKey) ?? "") ?? .shift
+        return .doubleTap(modifier)
+    }
+
+    private var configuredChords: [KeyChord] {
+        [previousWordShortcut, selectionShortcut].compactMap {
+            if case .chord(let chord) = $0 { return chord }
+            return nil
+        }
+    }
+
+    func shortcut(for action: ManualAction) -> ManualShortcut {
+        action == .previousWord ? previousWordShortcut : selectionShortcut
+    }
+
+    func beginShortcutRecording(_ action: ManualAction) {
+        cancelShortcutRecording()
+        recordingAction = action
+        recordingDoubleTap = DoubleTapDetector()
+        shortcutMessage = nil
+        recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            guard let self, let action = self.recordingAction else { return event }
+            if event.type == .flagsChanged {
+                if let modifier = self.recordingDoubleTap.flagsChanged(event.modifierFlags, at: event.timestamp) {
+                    self.setShortcut(.doubleTap(modifier), for: action)
+                }
+                return event
+            }
+            if event.keyCode == 53 {
+                self.cancelShortcutRecording()
+            } else if let chord = KeyChord.capture(event) {
+                self.setShortcut(.chord(chord), for: action)
+            } else {
+                self.recordingDoubleTap.keyPressed()
+                self.shortcutMessage = "Press a key with a modifier, or double-tap a modifier. Esc cancels."
+            }
+            return nil
+        }
+    }
+
+    func cancelShortcutRecording() {
+        if let recordingMonitor { NSEvent.removeMonitor(recordingMonitor) }
+        recordingMonitor = nil
+        recordingAction = nil
+    }
+
+    func resetShortcut(_ action: ManualAction) {
+        setShortcut(.doubleTap(.shift), for: action)
+    }
+
+    private func setShortcut(_ shortcut: ManualShortcut, for action: ManualAction) {
+        let other = self.shortcut(for: action == .previousWord ? .selection : .previousWord)
+        let next = [shortcut, other].compactMap { value -> KeyChord? in
+            if case .chord(let chord) = value { return chord }
+            return nil
+        }
+        guard shortcutTap?.update(chords: next) == true else {
+            shortcutMessage = "Could not activate this shortcut. Check Accessibility and Input Monitoring access."
+            return
+        }
+        if action == .previousWord { previousWordShortcut = shortcut }
+        else { selectionShortcut = shortcut }
+        UserDefaults.standard.set(try? JSONEncoder().encode(shortcut), forKey: "manualShortcut.\(action.rawValue)")
+        shortcutMessage = nil
+        cancelShortcutRecording()
     }
 
     func refreshLaunchAtLogin() {
@@ -134,6 +216,12 @@ final class NeToModel: ObservableObject {
     func refreshPermissions() {
         hasAccessibilityAccess = AXIsProcessTrusted()
         hasInputMonitoringAccess = CGPreflightListenEventAccess()
+        if hasRequiredAccess && !configuredChords.isEmpty,
+           shortcutMessage == "The global shortcut could not start. Check Accessibility and Input Monitoring access." {
+            shortcutMessage = shortcutTap?.update(chords: configuredChords) == true
+                ? nil
+                : "The global shortcut could not start. Check Accessibility and Input Monitoring access."
+        }
     }
 
     func requestPermissions() {
@@ -160,12 +248,11 @@ final class NeToModel: ObservableObject {
     }
 
     private func handleFlags(_ event: NSEvent) {
-        guard let shortcut = doubleTap.flagsChanged(event.modifierFlags, at: event.timestamp),
-              shortcut == previousWordShortcut || shortcut == selectionShortcut else { return }
-        repairManually(triggeredBy: shortcut)
+        guard let modifier = doubleTap.flagsChanged(event.modifierFlags, at: event.timestamp) else { return }
+        repairManually(triggeredBy: .doubleTap(modifier))
     }
 
-    private func repairManually(triggeredBy shortcut: DoubleTapModifier) {
+    private func repairManually(triggeredBy shortcut: ManualShortcut) {
         guard let snapshot = FocusedText.read() else {
             status = hasRequiredAccess
                 ? "Place the caret in a readable text field."

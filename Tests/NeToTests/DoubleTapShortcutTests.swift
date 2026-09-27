@@ -27,3 +27,20 @@ import Testing
     #expect(detector.flagsChanged([.control, .shift], at: 2.00) == nil)
     #expect(detector.flagsChanged([], at: 2.08) == nil)
 }
+
+@Test func keyChordMatchesOnlyItsPhysicalKeyAndModifiers() throws {
+    let shortcut = KeyChord(keyCode: 37, modifiers: CGEventFlags.maskCommand.rawValue | CGEventFlags.maskAlternate.rawValue,
+                            keyLabel: "L")
+    let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: 37, keyDown: true))
+    event.flags = [.maskCommand, .maskAlternate]
+    #expect(shortcut.matches(event))
+    event.flags = [.maskCommand]
+    #expect(!shortcut.matches(event))
+    event.flags = [.maskCommand, .maskAlternate]
+    event.setIntegerValueField(.keyboardEventKeycode, value: 40)
+    #expect(!shortcut.matches(event))
+
+    let saved = ManualShortcut.chord(shortcut)
+    let restored = try JSONDecoder().decode(ManualShortcut.self, from: JSONEncoder().encode(saved))
+    #expect(restored == saved)
+}

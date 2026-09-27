@@ -22,18 +22,13 @@ struct SettingsView: View {
                 Divider()
 
                 settingsGroup("Manual repair") {
-                    Picker("Previous word", selection: $model.previousWordShortcut) {
-                        ForEach(DoubleTapModifier.allCases) { modifier in
-                            Text(modifier.title).tag(modifier)
-                        }
-                    }
-                    Picker("Selected text", selection: $model.selectionShortcut) {
-                        ForEach(DoubleTapModifier.allCases) { modifier in
-                            Text(modifier.title).tag(modifier)
-                        }
-                    }
-                    Text("Both actions use Double Shift by default. The selection decides which action runs when the same shortcut is assigned.")
+                    shortcutRow("Previous word", action: .previousWord)
+                    shortcutRow("Selected text", action: .selection)
+                    Text("Click a shortcut and press a key with any modifier. You can also double-tap a modifier. Esc cancels. Both actions default to Double Shift.")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let message = model.shortcutMessage {
+                        Text(message).font(.caption).foregroundStyle(.red)
+                    }
                 }
 
                 Divider()
@@ -98,6 +93,22 @@ struct SettingsView: View {
         .onAppear {
             model.refreshPermissions()
             model.refreshLaunchAtLogin()
+        }
+        .onDisappear { model.cancelShortcutRecording() }
+    }
+
+    private func shortcutRow(_ title: String, action: ManualAction) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Button(model.recordingAction == action ? "Press shortcut…" : model.shortcut(for: action).display) {
+                if model.recordingAction == action { model.cancelShortcutRecording() }
+                else { model.beginShortcutRecording(action) }
+            }
+            .frame(minWidth: 138)
+            if model.shortcut(for: action) != .doubleTap(.shift) {
+                Button("Reset") { model.resetShortcut(action) }
+            }
         }
     }
 
