@@ -50,6 +50,12 @@ final class NeToModel: ObservableObject {
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginMessage: String?
     @Published private(set) var customWords = CustomDictionary.words
+    @Published var previousWordShortcut: DoubleTapModifier {
+        didSet { UserDefaults.standard.set(previousWordShortcut.rawValue, forKey: "previousWordShortcut") }
+    }
+    @Published var selectionShortcut: DoubleTapModifier {
+        didSet { UserDefaults.standard.set(selectionShortcut.rawValue, forKey: "selectionShortcut") }
+    }
 
     var hasRequiredAccess: Bool { hasAccessibilityAccess && hasInputMonitoringAccess }
 
@@ -58,13 +64,14 @@ final class NeToModel: ObservableObject {
     private var flagsMonitor: Any?
     private var layoutTimer: Timer?
     private var accessTimer: Timer?
-    private var lastShiftRelease: TimeInterval = 0
-    private var shiftWasAlone = false
+    private var doubleTap = DoubleTapDetector()
     private var revision = 0
     private var started = false
 
     init() {
         automaticRepair = UserDefaults.standard.object(forKey: "automaticRepair") as? Bool ?? true
+        previousWordShortcut = DoubleTapModifier(rawValue: UserDefaults.standard.string(forKey: "previousWordShortcut") ?? "") ?? .shift
+        selectionShortcut = DoubleTapModifier(rawValue: UserDefaults.standard.string(forKey: "selectionShortcut") ?? "") ?? .shift
         UserDefaults.standard.removeObject(forKey: "hotKey.1")
         UserDefaults.standard.removeObject(forKey: "hotKey.2")
         currentLayout = keyboard.currentLayout
@@ -139,7 +146,7 @@ final class NeToModel: ObservableObject {
     private func handleKey(_ event: NSEvent) {
         if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == KeyboardReplacement.eventTag { return }
         revision &+= 1
-        shiftWasAlone = false
+        doubleTap.keyPressed()
         guard automaticRepair, !event.isARepeat,
               [49, 36, 76].contains(Int(event.keyCode)) else { return }
         let expectedRevision = revision
@@ -153,24 +160,12 @@ final class NeToModel: ObservableObject {
     }
 
     private func handleFlags(_ event: NSEvent) {
-        let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
-        let now = ProcessInfo.processInfo.systemUptime
-        if flags == .shift {
-            shiftWasAlone = true
-        } else if flags.isEmpty && shiftWasAlone {
-            shiftWasAlone = false
-            if now - lastShiftRelease < 0.42 {
-                lastShiftRelease = 0
-                repairManually()
-            } else {
-                lastShiftRelease = now
-            }
-        } else {
-            shiftWasAlone = false
-        }
+        guard let shortcut = doubleTap.flagsChanged(event.modifierFlags, at: event.timestamp),
+              shortcut == previousWordShortcut || shortcut == selectionShortcut else { return }
+        repairManually(triggeredBy: shortcut)
     }
 
-    func repairManually() {
+    private func repairManually(triggeredBy shortcut: DoubleTapModifier) {
         guard let snapshot = FocusedText.read() else {
             status = hasRequiredAccess
                 ? "Place the caret in a readable text field."
@@ -178,6 +173,7 @@ final class NeToModel: ObservableObject {
             return
         }
         let selected = snapshot.selection.length > 0
+        guard (selected && shortcut == selectionShortcut) || (!selected && shortcut == previousWordShortcut) else { return }
         let input = selected ? snapshot.selectedText : WordBoundary.precedingWord(in: snapshot.prefix, allowDelimiter: false)
         guard let input, let conversion = LayoutConversion.convert(input), snapshot.isStillCurrent() else {
             status = "No EN/RU text to repair."

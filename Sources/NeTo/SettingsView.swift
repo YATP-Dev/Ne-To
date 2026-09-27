@@ -22,8 +22,17 @@ struct SettingsView: View {
                 Divider()
 
                 settingsGroup("Manual repair") {
-                    settingRow("Shortcut", value: "Double Shift")
-                    Text("Repairs selected text, or the previous word when nothing is selected.")
+                    Picker("Previous word", selection: $model.previousWordShortcut) {
+                        ForEach(DoubleTapModifier.allCases) { modifier in
+                            Text(modifier.title).tag(modifier)
+                        }
+                    }
+                    Picker("Selected text", selection: $model.selectionShortcut) {
+                        ForEach(DoubleTapModifier.allCases) { modifier in
+                            Text(modifier.title).tag(modifier)
+                        }
+                    }
+                    Text("Both actions use Double Shift by default. The selection decides which action runs when the same shortcut is assigned.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
@@ -41,16 +50,35 @@ struct SettingsView: View {
                     if let dictionaryMessage {
                         Text(dictionaryMessage).font(.caption).foregroundStyle(.red)
                     }
-                    ForEach(model.customWords, id: \.self) { word in
-                        HStack {
-                            Text(word)
-                            Spacer()
-                            Button("Remove", systemImage: "minus.circle") { model.removeCustomWord(word) }
-                                .labelStyle(.iconOnly)
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Remove \(word)")
+                    ScrollView {
+                        if model.customWords.isEmpty {
+                            Text("No custom words yet")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            TagFlowLayout(spacing: 8) {
+                                ForEach(model.customWords, id: \.self) { word in
+                                    HStack(spacing: 6) {
+                                        Text(word).lineLimit(1).truncationMode(.middle)
+                                        Button {
+                                            model.removeCustomWord(word)
+                                        } label: {
+                                            Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Remove \(word)")
+                                    }
+                                    .font(.caption)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(.quaternary, in: Capsule())
+                                }
+                            }
+                            .padding(8)
                         }
                     }
+                    .frame(height: 116)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                 }
 
                 Divider()
@@ -94,6 +122,45 @@ struct SettingsView: View {
             dictionaryMessage = nil
         } else {
             dictionaryMessage = "Enter a new word of 2–40 letters."
+        }
+    }
+}
+
+private struct TagFlowLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 440
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: width, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > bounds.width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: bounds.minX + x, y: bounds.minY + y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
         }
     }
 }
