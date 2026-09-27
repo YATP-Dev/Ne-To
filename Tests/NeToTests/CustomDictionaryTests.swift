@@ -21,9 +21,3 @@ import Testing
     #expect(CustomDictionary.add("nebrand"))
     #expect(CustomDictionary.contains("NEBRAND"))
 }
-
-@Test func defaultHotKeysAreDistinct() {
-    #expect(HotKey.defaultPreviousWord != HotKey.defaultSelection)
-    #expect(HotKey.defaultPreviousWord.display == "⌃⌥⌘L")
-    #expect(HotKey.defaultSelection.display == "⌃⌥⌘S")
-}

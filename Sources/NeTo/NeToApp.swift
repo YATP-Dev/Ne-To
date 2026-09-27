@@ -1,6 +1,5 @@
 import AppKit
 import ApplicationServices
-import Carbon
 import ServiceManagement
 import SwiftUI
 
@@ -50,10 +49,6 @@ final class NeToModel: ObservableObject {
     @Published private(set) var hasInputMonitoringAccess = false
     @Published private(set) var launchAtLogin = false
     @Published private(set) var launchAtLoginMessage: String?
-    @Published private(set) var previousWordHotKey: HotKey
-    @Published private(set) var selectionHotKey: HotKey
-    @Published private(set) var recordingAction: RepairAction?
-    @Published private(set) var hotKeyMessage: String?
     @Published private(set) var customWords = CustomDictionary.words
 
     var hasRequiredAccess: Bool { hasAccessibilityAccess && hasInputMonitoringAccess }
@@ -63,8 +58,6 @@ final class NeToModel: ObservableObject {
     private var flagsMonitor: Any?
     private var layoutTimer: Timer?
     private var accessTimer: Timer?
-    private var hotKeys: GlobalHotKeys?
-    private var recordingMonitor: Any?
     private var lastShiftRelease: TimeInterval = 0
     private var shiftWasAlone = false
     private var revision = 0
@@ -72,8 +65,8 @@ final class NeToModel: ObservableObject {
 
     init() {
         automaticRepair = UserDefaults.standard.object(forKey: "automaticRepair") as? Bool ?? true
-        previousWordHotKey = Self.savedHotKey(for: .previousWord) ?? .defaultPreviousWord
-        selectionHotKey = Self.savedHotKey(for: .selection) ?? .defaultSelection
+        UserDefaults.standard.removeObject(forKey: "hotKey.1")
+        UserDefaults.standard.removeObject(forKey: "hotKey.2")
         currentLayout = keyboard.currentLayout
         Task { @MainActor [weak self] in self?.start() }
     }
@@ -96,19 +89,8 @@ final class NeToModel: ObservableObject {
         accessTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPermissions() }
         }
-        hotKeys = GlobalHotKeys { [weak self] action in self?.repairManually(scope: action) }
-        let wordRegistered = hotKeys?.register(previousWordHotKey, for: .previousWord) == true
-        let selectionRegistered = hotKeys?.register(selectionHotKey, for: .selection) == true
-        if !wordRegistered || !selectionRegistered {
-            hotKeyMessage = "A shortcut is already used by macOS or another app. Change it in Settings."
-        }
         refreshPermissions()
         refreshLaunchAtLogin()
-    }
-
-    private static func savedHotKey(for action: RepairAction) -> HotKey? {
-        guard let data = UserDefaults.standard.data(forKey: "hotKey.\(action.rawValue)") else { return nil }
-        return try? JSONDecoder().decode(HotKey.self, from: data)
     }
 
     func refreshLaunchAtLogin() {
@@ -141,54 +123,6 @@ final class NeToModel: ObservableObject {
         customWords = CustomDictionary.words
     }
 
-    func hotKey(for action: RepairAction) -> HotKey {
-        action == .previousWord ? previousWordHotKey : selectionHotKey
-    }
-
-    func beginRecording(_ action: RepairAction) {
-        cancelRecording()
-        recordingAction = action
-        hotKeyMessage = nil
-        hotKeys?.register(nil, for: action)
-        recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, let action = self.recordingAction else { return event }
-            if event.keyCode == 53 {
-                self.cancelRecording()
-            } else if let candidate = HotKey.capture(event) {
-                self.saveHotKey(candidate, for: action)
-            } else {
-                self.hotKeyMessage = "Press a letter or number with at least two of ⌃, ⌥, ⌘. Esc cancels."
-            }
-            return nil
-        }
-    }
-
-    func cancelRecording() {
-        guard let action = recordingAction else { return }
-        if let recordingMonitor { NSEvent.removeMonitor(recordingMonitor) }
-        recordingMonitor = nil
-        recordingAction = nil
-        hotKeys?.register(hotKey(for: action), for: action)
-    }
-
-    private func saveHotKey(_ candidate: HotKey, for action: RepairAction) {
-        let other: RepairAction = action == .previousWord ? .selection : .previousWord
-        guard candidate.keyCode != hotKey(for: other).keyCode || candidate.modifiers != hotKey(for: other).modifiers else {
-            hotKeyMessage = "The two actions need different shortcuts."
-            return
-        }
-        guard hotKeys?.register(candidate, for: action) == true else {
-            hotKeyMessage = "This shortcut is already used by macOS or another app."
-            return
-        }
-        if let recordingMonitor { NSEvent.removeMonitor(recordingMonitor) }
-        recordingMonitor = nil
-        recordingAction = nil
-        if action == .previousWord { previousWordHotKey = candidate }
-        else { selectionHotKey = candidate }
-        UserDefaults.standard.set(try? JSONEncoder().encode(candidate), forKey: "hotKey.\(action.rawValue)")
-        hotKeyMessage = nil
-    }
 
     func refreshPermissions() {
         hasAccessibilityAccess = AXIsProcessTrusted()
@@ -227,7 +161,7 @@ final class NeToModel: ObservableObject {
             shiftWasAlone = false
             if now - lastShiftRelease < 0.42 {
                 lastShiftRelease = 0
-                repairManually(scope: nil)
+                repairManually()
             } else {
                 lastShiftRelease = now
             }
@@ -236,7 +170,7 @@ final class NeToModel: ObservableObject {
         }
     }
 
-    func repairManually(scope: RepairAction?) {
+    func repairManually() {
         guard let snapshot = FocusedText.read() else {
             status = hasRequiredAccess
                 ? "Place the caret in a readable text field."
@@ -244,14 +178,6 @@ final class NeToModel: ObservableObject {
             return
         }
         let selected = snapshot.selection.length > 0
-        if scope == .selection && !selected {
-            status = "Select text to repair."
-            return
-        }
-        if scope == .previousWord && selected {
-            status = "Place the caret after a word to repair it."
-            return
-        }
         let input = selected ? snapshot.selectedText : WordBoundary.precedingWord(in: snapshot.prefix, allowDelimiter: false)
         guard let input, let conversion = LayoutConversion.convert(input), snapshot.isStillCurrent() else {
             status = "No EN/RU text to repair."
