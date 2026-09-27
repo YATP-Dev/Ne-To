@@ -21,7 +21,9 @@ swift test
 zsh Scripts/package-app.sh
 ```
 
-The package script creates `dist/Ne-To.app` using the sole available Apple Development signing identity. If there is more than one identity, set `NE_TO_SIGNING_IDENTITY` explicitly. Install the app in a stable location before granting **Accessibility** and **Input Monitoring** permissions in System Settings. Keeping the same signing identity across builds helps macOS retain those permissions. The menu bar app never uploads typed text.
+The package script creates `dist/Ne-To.app` using the sole available Apple Development signing identity. If there is more than one identity, set `NE_TO_SIGNING_IDENTITY` explicitly. Set `NE_TO_OUTPUT_APP` to package at another path. Install the app in a stable location before granting **Accessibility** and **Input Monitoring** permissions in System Settings. Keeping the same signing identity across builds helps macOS retain those permissions. The menu bar app never uploads typed text.
+
+An ad hoc signed build is suitable for local review. A binary intended for normal installation on other Macs needs a Developer ID Application signature and Apple notarization; the `0.0.1` draft binary is not notarized.
 
 ## License
 

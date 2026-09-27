@@ -16,7 +16,7 @@ fi
 cd "$root"
 swift build -c release
 binary="$(swift build -c release --show-bin-path)/NeTo"
-app="$root/dist/Ne-To.app"
+app="${NE_TO_OUTPUT_APP:-$root/dist/Ne-To.app}"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/NeTo"
 cp "$root/LICENSE" "$root/THIRD_PARTY_DATA.md" "$app/Contents/Resources/"
@@ -34,12 +34,15 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIdentifier</key><string>dev.yatp.ne-to</string>
     <key>CFBundleName</key><string>Ne-To</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0.0</string>
+    <key>CFBundleIconFile</key><string>AppIcon.icns</string>
+    <key>CFBundleIconName</key><string>AppIcon</string>
+    <key>CFBundleShortVersionString</key><string>0.0.1</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
+test -s "$app/Contents/Resources/AppIcon.icns"
 codesign --force --sign "$signing_identity" "$app"
 echo "Created $app"
