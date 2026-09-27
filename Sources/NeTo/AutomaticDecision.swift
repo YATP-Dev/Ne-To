@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 enum AutomaticDecision {
     static func candidate(for word: String) -> Conversion? {
-        guard word.count >= 3, word.count <= 40,
+        guard word.count >= 2, word.count <= 40,
               word == word.lowercased(),
               let conversion = LayoutConversion.convert(word),
               conversion.output.allSatisfy(\.isLetter) else { return nil }
