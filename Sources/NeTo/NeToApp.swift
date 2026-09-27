@@ -335,13 +335,12 @@ final class NeToModel: ObservableObject {
               let delimiter = snapshot.prefix.last, delimiter == " " || delimiter == "\n",
               let word = WordBoundary.precedingWord(in: snapshot.prefix, allowDelimiter: true),
               let conversion = AutomaticDecision.candidate(for: word),
-              snapshot.isStillCurrent() else { return }
-        KeyboardReplacement.replace(backspaces: word.utf16.count + 1,
-                                    with: conversion.output + String(delimiter))
-        keyboard.select(conversion.target)
-        currentLayout = keyboard.currentLayout
-        status = .repaired(conversion.source, conversion.target)
-        playSwitchSoundIfEnabled()
+              snapshot.selection.location >= word.utf16.count + 1 else { return }
+        let range = NSRange(location: snapshot.selection.location - word.utf16.count - 1,
+                            length: word.utf16.count)
+        guard snapshot.replaceDirectly(range: range, with: conversion.output) else { return }
+        confirmAutomaticRepair(snapshot: snapshot, range: range, output: conversion.output,
+                               source: conversion.source, target: conversion.target, selectLayout: true)
     }
 
     private func repairPhraseAutomatically(in processID: pid_t?) -> Bool {
@@ -351,12 +350,12 @@ final class NeToModel: ObservableObject {
               snapshot.selection.length == 0,
               let line = snapshot.prefix.split(separator: "\n", omittingEmptySubsequences: false).last,
               let conversion = PhraseDecision.candidate(for: String(line)),
-              snapshot.isStillCurrent() else { return false }
-        KeyboardReplacement.replace(backspaces: line.utf16.count, with: conversion.output)
-        keyboard.select(conversion.target)
-        currentLayout = keyboard.currentLayout
-        status = .repaired(conversion.source, conversion.target)
-        playSwitchSoundIfEnabled()
+              snapshot.selection.location >= line.utf16.count else { return false }
+        let range = NSRange(location: snapshot.selection.location - line.utf16.count,
+                            length: line.utf16.count)
+        guard snapshot.replaceDirectly(range: range, with: conversion.output) else { return false }
+        confirmAutomaticRepair(snapshot: snapshot, range: range, output: conversion.output,
+                               source: conversion.source, target: conversion.target, selectLayout: false)
         return true
     }
 
@@ -365,8 +364,11 @@ final class NeToModel: ObservableObject {
               let snapshot = FocusedText.read(), snapshot.processID == processID,
               let candidate = ContextualLetterDecision.candidate(in: snapshot.prefix),
               snapshot.replaceDirectly(range: candidate.range, with: candidate.replacement) else { return false }
-        status = .repaired(.english, .russian)
-        playSwitchSoundIfEnabled()
+        confirmAutomaticRepair(
+            snapshot: snapshot, range: candidate.range, output: candidate.replacement,
+            source: .english, target: .russian,
+            selectLayout: false
+        )
         return true
     }
 
@@ -383,14 +385,37 @@ final class NeToModel: ObservableObject {
                     range: NSRange(location: location, length: candidate.word.utf16.count),
                     with: conversion.output
                   ) else { return }
-            if candidate.trailing.dropFirst().allSatisfy({ !$0.isLetter }),
-               keyboard.currentLayout == conversion.source {
-                keyboard.select(conversion.target)
-            }
-            currentLayout = keyboard.currentLayout
-            status = .repaired(conversion.source, conversion.target)
-            playSwitchSoundIfEnabled()
+            confirmAutomaticRepair(
+                snapshot: snapshot,
+                range: NSRange(location: location, length: candidate.word.utf16.count),
+                output: conversion.output,
+                source: conversion.source,
+                target: conversion.target,
+                selectLayout: false
+            )
             return
+        }
+    }
+
+    private func confirmAutomaticRepair(snapshot: FocusedText, range: NSRange, output: String,
+                                        source: KeyboardLanguage, target: KeyboardLanguage,
+                                        selectLayout: Bool) {
+        let expectedValue = (snapshot.value as NSString).replacingCharacters(in: range, with: output)
+        let expectedCaret = snapshot.selection.location + output.utf16.count - range.length
+        let expectedRevision = revision
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard let self, self.revision == expectedRevision,
+                  let current = FocusedText.read(), current.processID == snapshot.processID,
+                  current.value == expectedValue,
+                  current.selection.location == expectedCaret,
+                  current.selection.length == 0 else { return }
+            if selectLayout, self.keyboard.currentLayout == source {
+                self.keyboard.select(target)
+            }
+            self.currentLayout = self.keyboard.currentLayout
+            self.status = .repaired(source, target)
+            self.playSwitchSoundIfEnabled()
         }
     }
 }

@@ -61,22 +61,48 @@ struct FocusedText {
         var rangeSettable = DarwinBoolean(false)
         var textSettable = DarwinBoolean(false)
         guard AXUIElementIsAttributeSettable(element, kAXSelectedTextRangeAttribute as CFString, &rangeSettable) == .success,
-              rangeSettable.boolValue,
-              AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &textSettable) == .success,
-              textSettable.boolValue else { return false }
-        var selectedRange = CFRange(location: range.location, length: range.length)
-        guard let selectedValue = AXValueCreate(.cfRange, &selectedRange),
-              AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selectedValue) == .success else {
-            return false
-        }
-        let result = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString,
+              rangeSettable.boolValue else { return false }
+        let canReplaceSelection =
+            AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &textSettable) == .success
+            && textSettable.boolValue
+        let expectedValue = (value as NSString).replacingCharacters(in: range, with: replacement)
+        var result: AXError = .attributeUnsupported
+        if canReplaceSelection {
+            var selectedRange = CFRange(location: range.location, length: range.length)
+            guard let selectedValue = AXValueCreate(.cfRange, &selectedRange),
+                  AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selectedValue) == .success else {
+                return false
+            }
+            result = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString,
                                                   replacement as CFString)
+        }
+        if result != .success, (value as NSString).length <= 2048 {
+            var valueSettable = DarwinBoolean(false)
+            if AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &valueSettable) == .success,
+               valueSettable.boolValue {
+                result = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString,
+                                                      expectedValue as CFString)
+            }
+        }
         let delta = (replacement as NSString).length - range.length
         var restoredCaret = CFRange(location: selection.location + (result == .success ? delta : 0), length: 0)
-        if let caretValue = AXValueCreate(.cfRange, &restoredCaret) {
-            AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, caretValue)
+        guard let caretValue = AXValueCreate(.cfRange, &restoredCaret),
+              AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, caretValue) == .success else {
+            return false
         }
-        return result == .success
+        guard result == .success else { return false }
+        var actualValue: CFTypeRef?
+        var actualRange: CFTypeRef?
+        var verifiedCaret = CFRange(location: 0, length: 0)
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &actualValue) == .success,
+              let actualValue = actualValue as? String,
+              actualValue == expectedValue,
+              AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &actualRange) == .success,
+              let actualRange, CFGetTypeID(actualRange) == AXValueGetTypeID(),
+              AXValueGetValue(actualRange as! AXValue, .cfRange, &verifiedCaret),
+              verifiedCaret.location == restoredCaret.location,
+              verifiedCaret.length == 0 else { return false }
+        return true
     }
 
     var prefix: String {
