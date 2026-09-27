@@ -4,52 +4,74 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @ObservedObject var model: NeToModel
     @State private var newWord = ""
-    @State private var dictionaryMessage: String?
-    @State private var applicationMessage: String?
+    @State private var dictionaryError = false
+    @State private var applicationError = false
+
+    private var language: InterfaceLanguage { model.interfaceLanguage }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                settingsGroup("General") {
-                    Toggle("Launch at Login", isOn: Binding(
+                settingsGroup(language.text("General", "Основные")) {
+                    HStack {
+                        Text(language.text("Interface language", "Язык интерфейса"))
+                        Spacer()
+                        Picker("", selection: $model.interfaceLanguage) {
+                            Text("RU").tag(InterfaceLanguage.russian)
+                            Text("EN").tag(InterfaceLanguage.english)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 130)
+                        .accessibilityLabel(language.text("Interface language", "Язык интерфейса"))
+                    }
+                    Toggle(language.text("Launch at Login", "Запускать при входе"), isOn: Binding(
                         get: { model.launchAtLogin },
                         set: { model.setLaunchAtLogin($0) }
                     ))
                     if let message = model.launchAtLoginMessage {
-                        Text(message).font(.caption).foregroundStyle(.secondary)
+                        Text(message.text(in: language)).font(.caption).foregroundStyle(.secondary)
                     }
-                    Toggle("Automatic layout repair", isOn: $model.automaticRepair)
+                    Toggle(language.text("Automatic layout repair", "Автоматически исправлять раскладку"),
+                           isOn: $model.automaticRepair)
                 }
 
                 Divider()
 
-                settingsGroup("Manual repair") {
-                    shortcutRow("Previous word", action: .previousWord)
-                    shortcutRow("Selected text", action: .selection)
-                    Text("Click a shortcut and press a key with any modifier. You can also double-tap a modifier. Esc cancels. Both actions default to Double Shift.")
+                settingsGroup(language.text("Manual repair", "Ручное исправление")) {
+                    shortcutRow(language.text("Previous word", "Предыдущее слово"), action: .previousWord)
+                    shortcutRow(language.text("Selected text", "Выделенный текст"), action: .selection)
+                    Text(language.text(
+                        "Click a shortcut and press a key with any modifier. You can also double-tap a modifier. Esc cancels. Both actions default to Double Shift.",
+                        "Нажмите на сочетание и введите клавишу с модификатором или дважды нажмите модификатор. Esc отменяет запись. По умолчанию — двойной Shift."
+                    ))
                         .font(.caption).foregroundStyle(.secondary)
                     if let message = model.shortcutMessage {
-                        Text(message).font(.caption).foregroundStyle(.red)
+                        Text(message.text(in: language)).font(.caption).foregroundStyle(.red)
                     }
                 }
 
                 Divider()
 
-                settingsGroup("Custom dictionary") {
-                    Text("Custom words stay on this Mac. They are protected from automatic replacement and can be accepted as converted words.")
+                settingsGroup(language.text("Custom dictionary", "Свой словарь")) {
+                    Text(language.text(
+                        "Custom words stay on this Mac. They are protected from automatic replacement and can be accepted as converted words.",
+                        "Добавленные слова хранятся только на этом Mac. Они защищены от автоматической замены и могут использоваться как результат исправления."
+                    ))
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
-                        TextField("Добавьте слово", text: $newWord)
+                        TextField(language.text("Add a word", "Добавьте слово"), text: $newWord)
                             .onSubmit(addWord)
-                        Button("Add", action: addWord)
+                        Button(language.text("Add", "Добавить"), action: addWord)
                             .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    if let dictionaryMessage {
-                        Text(dictionaryMessage).font(.caption).foregroundStyle(.red)
+                    if dictionaryError {
+                        Text(language.text("Enter a new word of 2–40 letters.", "Введите новое слово длиной от 2 до 40 букв."))
+                            .font(.caption).foregroundStyle(.red)
                     }
                     ScrollView {
                         if model.customWords.isEmpty {
-                            Text("No custom words yet")
+                            Text(language.text("No custom words yet", "Слов пока нет"))
                                 .font(.caption).foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else {
@@ -63,7 +85,7 @@ struct SettingsView: View {
                                             Image(systemName: "xmark").font(.caption2.weight(.semibold))
                                         }
                                         .buttonStyle(.plain)
-                                        .accessibilityLabel("Remove \(word)")
+                                        .accessibilityLabel(language.text("Remove \(word)", "Удалить \(word)"))
                                     }
                                     .font(.caption)
                                     .padding(.horizontal, 10)
@@ -80,15 +102,20 @@ struct SettingsView: View {
 
                 Divider()
 
-                settingsGroup("Automatic repair exceptions") {
-                    Text("Ne-To will not change the keyboard layout automatically in these apps. Manual repair still works.")
+                settingsGroup(language.text("Automatic repair exceptions", "Исключения автозамены")) {
+                    Text(language.text(
+                        "Ne-To will not change the keyboard layout automatically in these apps. Manual repair still works.",
+                        "В этих приложениях Ne-To не исправляет раскладку автоматически. Ручное исправление продолжит работать."
+                    ))
                         .font(.caption).foregroundStyle(.secondary)
-                    Button("Add Application…", action: chooseApplications)
-                    if let applicationMessage {
-                        Text(applicationMessage).font(.caption).foregroundStyle(.red)
+                    Button(language.text("Add Application…", "Добавить приложение…"), action: chooseApplications)
+                    if applicationError {
+                        Text(language.text("Choose an application with a valid bundle identifier.",
+                                           "Выберите приложение с корректным идентификатором."))
+                            .font(.caption).foregroundStyle(.red)
                     }
                     if model.excludedApplications.isEmpty {
-                        Text("No excluded applications")
+                        Text(language.text("No excluded applications", "Исключений пока нет"))
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         ScrollView {
@@ -107,7 +134,8 @@ struct SettingsView: View {
                                             Image(systemName: "xmark.circle.fill")
                                         }
                                         .buttonStyle(.plain)
-                                        .accessibilityLabel("Remove \(application.name)")
+                                        .accessibilityLabel(language.text("Remove \(application.name)",
+                                                                           "Удалить \(application.name)"))
                                     }
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
@@ -122,11 +150,17 @@ struct SettingsView: View {
 
                 Divider()
 
-                settingsGroup("Access") {
-                    settingRow("Accessibility", value: model.hasAccessibilityAccess ? "Granted" : "Required")
-                    settingRow("Input Monitoring", value: model.hasInputMonitoringAccess ? "Granted" : "Required")
+                settingsGroup(language.text("Access", "Доступ")) {
+                    settingRow(language.text("Accessibility", "Универсальный доступ"),
+                               value: model.hasAccessibilityAccess
+                                   ? language.text("Granted", "Разрешён") : language.text("Required", "Требуется"))
+                    settingRow(language.text("Input Monitoring", "Мониторинг ввода"),
+                               value: model.hasInputMonitoringAccess
+                                   ? language.text("Granted", "Разрешён") : language.text("Required", "Требуется"))
                     if !model.hasRequiredAccess {
-                        Button("Grant Required Access") { model.requestPermissions() }
+                        Button(language.text("Grant Required Access", "Предоставить доступ")) {
+                            model.requestPermissions()
+                        }
                     }
                 }
             }
@@ -137,7 +171,9 @@ struct SettingsView: View {
         .onAppear {
             model.refreshPermissions()
             model.refreshLaunchAtLogin()
+            updateWindowTitle()
         }
+        .onChange(of: model.interfaceLanguage) { _, _ in updateWindowTitle() }
         .onDisappear { model.cancelShortcutRecording() }
     }
 
@@ -145,13 +181,15 @@ struct SettingsView: View {
         HStack {
             Text(title)
             Spacer()
-            Button(model.recordingAction == action ? "Press shortcut…" : model.shortcut(for: action).display) {
+            Button(model.recordingAction == action
+                   ? language.text("Press shortcut…", "Нажмите сочетание…")
+                   : model.shortcut(for: action).display(in: language)) {
                 if model.recordingAction == action { model.cancelShortcutRecording() }
                 else { model.beginShortcutRecording(action) }
             }
             .frame(minWidth: 138)
             if model.shortcut(for: action) != .doubleTap(.shift) {
-                Button("Reset") { model.resetShortcut(action) }
+                Button(language.text("Reset", "Сбросить")) { model.resetShortcut(action) }
             }
         }
     }
@@ -174,9 +212,9 @@ struct SettingsView: View {
     private func addWord() {
         if model.addCustomWord(newWord) {
             newWord = ""
-            dictionaryMessage = nil
+            dictionaryError = false
         } else {
-            dictionaryMessage = "Enter a new word of 2–40 letters."
+            dictionaryError = true
         }
     }
 
@@ -187,11 +225,14 @@ struct SettingsView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
-        panel.prompt = "Add"
+        panel.prompt = language.text("Add", "Добавить")
         guard panel.runModal() == .OK else { return }
-        applicationMessage = model.addExcludedApplications(panel.urls)
-            ? nil
-            : "Choose an application with a valid bundle identifier."
+        applicationError = !model.addExcludedApplications(panel.urls)
+    }
+
+    private func updateWindowTitle() {
+        let title = language.text("Ne-To Settings", "Настройки Ne-To")
+        NSApp.windows.first { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }?.title = title
     }
 }
 

@@ -8,12 +8,12 @@ enum DoubleTapModifier: String, CaseIterable, Identifiable, Codable {
 
     var id: Self { self }
 
-    var title: String {
+    func title(in language: InterfaceLanguage) -> String {
         switch self {
-        case .shift: "Double Shift"
-        case .control: "Double Control"
-        case .option: "Double Option"
-        case .command: "Double Command"
+        case .shift: language.text("Double Shift", "Двойной Shift")
+        case .control: language.text("Double Control", "Двойной Control")
+        case .option: language.text("Double Option", "Двойной Option")
+        case .command: language.text("Double Command", "Двойной Command")
         }
     }
 
@@ -64,11 +64,12 @@ struct KeyChord: Codable, Equatable {
 
     static let modifierMask: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
 
-    var display: String {
+    func display(in language: InterfaceLanguage) -> String {
         let symbols: [(CGEventFlags, String)] = [
             (.maskControl, "⌃"), (.maskAlternate, "⌥"), (.maskShift, "⇧"), (.maskCommand, "⌘")
         ]
-        return symbols.filter { modifiers & $0.0.rawValue != 0 }.map(\.1).joined() + keyLabel
+        let label = keyLabel == "Space" ? language.text("Space", "Пробел") : keyLabel
+        return symbols.filter { modifiers & $0.0.rawValue != 0 }.map(\.1).joined() + label
     }
 
     static func capture(_ event: NSEvent) -> KeyChord? {
@@ -105,10 +106,10 @@ enum ManualShortcut: Codable, Equatable {
     case doubleTap(DoubleTapModifier)
     case chord(KeyChord)
 
-    var display: String {
+    func display(in language: InterfaceLanguage) -> String {
         switch self {
-        case .doubleTap(let modifier): modifier.title
-        case .chord(let chord): chord.display
+        case .doubleTap(let modifier): modifier.title(in: language)
+        case .chord(let chord): chord.display(in: language)
         }
     }
 }

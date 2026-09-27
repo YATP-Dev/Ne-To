@@ -12,17 +12,23 @@ struct NeToApp: App {
         MenuBarExtra {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Ne-To").font(.headline)
-                Text(model.status).font(.caption).fixedSize(horizontal: false, vertical: true)
+                Text(model.status.text(in: model.interfaceLanguage))
+                    .font(.caption).fixedSize(horizontal: false, vertical: true)
                 if !model.hasRequiredAccess {
-                    Text("Accessibility and Input Monitoring access are required.")
+                    Text(AppStatus.accessRequired.text(in: model.interfaceLanguage))
                         .font(.caption)
-                    Button("Grant Required Access") { model.requestPermissions() }
+                    Button(model.interfaceLanguage.text("Grant Required Access", "Предоставить доступ")) {
+                        model.requestPermissions()
+                    }
                 }
-                Button("Settings…") { openSettings() }
-                Text("Press Shift twice to repair selected text or the previous word.")
+                Button(model.interfaceLanguage.text("Settings…", "Настройки…")) { openSettings() }
+                Text(model.interfaceLanguage.text("Press Shift twice to repair selected text or the previous word.",
+                                                  "Дважды нажмите Shift, чтобы исправить выделенный текст или предыдущее слово."))
                     .font(.caption)
                 Divider()
-                Button("Quit Ne-To") { NSApplication.shared.terminate(nil) }
+                Button(model.interfaceLanguage.text("Quit Ne-To", "Завершить Ne-To")) {
+                    NSApplication.shared.terminate(nil)
+                }
             }
             .padding(14)
             .frame(width: 300)
@@ -40,21 +46,24 @@ struct NeToApp: App {
 @MainActor
 final class NeToModel: ObservableObject {
     static let shared = NeToModel()
+    @Published var interfaceLanguage: InterfaceLanguage {
+        didSet { UserDefaults.standard.set(interfaceLanguage.rawValue, forKey: "interfaceLanguage") }
+    }
     @Published var automaticRepair: Bool {
         didSet { UserDefaults.standard.set(automaticRepair, forKey: "automaticRepair") }
     }
-    @Published private(set) var status = "Ready. Press Shift twice to repair text."
+    @Published private(set) var status = AppStatus.ready
     @Published private(set) var currentLayout: KeyboardLanguage?
     @Published private(set) var hasAccessibilityAccess = false
     @Published private(set) var hasInputMonitoringAccess = false
     @Published private(set) var launchAtLogin = false
-    @Published private(set) var launchAtLoginMessage: String?
+    @Published private(set) var launchAtLoginMessage: LaunchAtLoginNotice?
     @Published private(set) var customWords = CustomDictionary.words
     @Published private(set) var excludedApplications = ApplicationExclusions.applications
     @Published private(set) var previousWordShortcut: ManualShortcut
     @Published private(set) var selectionShortcut: ManualShortcut
     @Published private(set) var recordingAction: ManualAction?
-    @Published private(set) var shortcutMessage: String?
+    @Published private(set) var shortcutMessage: ShortcutNotice?
 
     var hasRequiredAccess: Bool { hasAccessibilityAccess && hasInputMonitoringAccess }
 
@@ -71,6 +80,7 @@ final class NeToModel: ObservableObject {
     private var started = false
 
     init() {
+        interfaceLanguage = .saved
         automaticRepair = UserDefaults.standard.object(forKey: "automaticRepair") as? Bool ?? true
         previousWordShortcut = Self.savedShortcut(for: .previousWord)
         selectionShortcut = Self.savedShortcut(for: .selection)
@@ -104,7 +114,7 @@ final class NeToModel: ObservableObject {
             self?.repairManually(triggeredBy: .chord(chord))
         }
         if shortcutTap?.update(chords: configuredChords) == false {
-            shortcutMessage = "The global shortcut could not start. Check Accessibility and Input Monitoring access."
+            shortcutMessage = .tapUnavailable
         }
         refreshPermissions()
         refreshLaunchAtLogin()
@@ -150,7 +160,7 @@ final class NeToModel: ObservableObject {
                 self.setShortcut(.chord(chord), for: action)
             } else {
                 self.recordingDoubleTap.keyPressed()
-                self.shortcutMessage = "Press a key with a modifier, or double-tap a modifier. Esc cancels."
+                self.shortcutMessage = .recordHint
             }
             return nil
         }
@@ -173,7 +183,7 @@ final class NeToModel: ObservableObject {
             return nil
         }
         guard shortcutTap?.update(chords: next) == true else {
-            shortcutMessage = "Could not activate this shortcut. Check Accessibility and Input Monitoring access."
+            shortcutMessage = .activationFailed
             return
         }
         if action == .previousWord { previousWordShortcut = shortcut }
@@ -186,9 +196,7 @@ final class NeToModel: ObservableObject {
     func refreshLaunchAtLogin() {
         let state = SMAppService.mainApp.status
         launchAtLogin = state == .enabled || state == .requiresApproval
-        launchAtLoginMessage = state == .requiresApproval
-            ? "Approve Ne-To in System Settings → General → Login Items."
-            : nil
+        launchAtLoginMessage = state == .requiresApproval ? .approvalRequired : nil
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -198,7 +206,7 @@ final class NeToModel: ObservableObject {
             refreshLaunchAtLogin()
         } catch {
             refreshLaunchAtLogin()
-            launchAtLoginMessage = error.localizedDescription
+            launchAtLoginMessage = .error(error.localizedDescription)
         }
     }
 
@@ -235,10 +243,10 @@ final class NeToModel: ObservableObject {
         hasAccessibilityAccess = AXIsProcessTrusted()
         hasInputMonitoringAccess = CGPreflightListenEventAccess()
         if hasRequiredAccess && !configuredChords.isEmpty,
-           shortcutMessage == "The global shortcut could not start. Check Accessibility and Input Monitoring access." {
+           shortcutMessage == .tapUnavailable {
             shortcutMessage = shortcutTap?.update(chords: configuredChords) == true
                 ? nil
-                : "The global shortcut could not start. Check Accessibility and Input Monitoring access."
+                : .tapUnavailable
         }
     }
 
@@ -278,22 +286,20 @@ final class NeToModel: ObservableObject {
 
     private func repairManually(triggeredBy shortcut: ManualShortcut) {
         guard let snapshot = FocusedText.read() else {
-            status = hasRequiredAccess
-                ? "Place the caret in a readable text field."
-                : "Accessibility and Input Monitoring access are required."
+            status = hasRequiredAccess ? .unreadableField : .accessRequired
             return
         }
         let selected = snapshot.selection.length > 0
         guard (selected && shortcut == selectionShortcut) || (!selected && shortcut == previousWordShortcut) else { return }
         let input = selected ? snapshot.selectedText : WordBoundary.precedingWord(in: snapshot.prefix, allowDelimiter: false)
         guard let input, let conversion = LayoutConversion.convert(input), snapshot.isStillCurrent() else {
-            status = "No EN/RU text to repair."
+            status = .noText
             return
         }
         KeyboardReplacement.replace(backspaces: selected ? 0 : input.utf16.count, with: conversion.output)
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
-        status = "Repaired \(conversion.source.rawValue) → \(conversion.target.rawValue)."
+        status = .repaired(conversion.source, conversion.target)
     }
 
     private func repairAutomatically(in processID: pid_t?) {
@@ -308,7 +314,7 @@ final class NeToModel: ObservableObject {
                                     with: conversion.output + String(delimiter))
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
-        status = "Repaired \(conversion.source.rawValue) → \(conversion.target.rawValue)."
+        status = .repaired(conversion.source, conversion.target)
     }
 
     private func repairPhraseAutomatically(in processID: pid_t?) {
@@ -322,6 +328,6 @@ final class NeToModel: ObservableObject {
         KeyboardReplacement.replace(backspaces: line.utf16.count, with: conversion.output)
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
-        status = "Repaired \(conversion.source.rawValue) → \(conversion.target.rawValue)."
+        status = .repaired(conversion.source, conversion.target)
     }
 }
