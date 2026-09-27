@@ -6,26 +6,55 @@ import SwiftUI
 @main
 struct NeToApp: App {
     @StateObject private var model = NeToModel.shared
+    @Environment(\.openSettings) private var openSettings
 
     var body: some Scene {
         MenuBarExtra {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Ne-To").font(.headline)
                 Text(model.status).font(.caption).fixedSize(horizontal: false, vertical: true)
-                Toggle("Automatic layout repair", isOn: $model.automaticRepair)
+                if !model.hasRequiredAccess {
+                    Text("Accessibility and Input Monitoring access are required.")
+                        .font(.caption)
+                    Button("Grant Required Access") { model.requestPermissions() }
+                }
+                Button("Settings…") { openSettings() }
                 Text("Press Shift twice to repair selected text or the previous word.")
                     .font(.caption)
-                Button("Grant Accessibility and Input Monitoring") { model.requestPermissions() }
                 Divider()
                 Button("Quit Ne-To") { NSApplication.shared.terminate(nil) }
             }
             .padding(14)
             .frame(width: 300)
-            .onAppear { model.start() }
+            .onAppear { model.start(); model.refreshPermissions() }
         } label: {
             Text(model.currentLayout?.rawValue ?? "EN/RU")
         }
         .menuBarExtraStyle(.window)
+        Settings {
+            SettingsView(model: model)
+        }
+    }
+}
+
+private struct SettingsView: View {
+    @ObservedObject var model: NeToModel
+
+    var body: some View {
+        Form {
+            Toggle("Automatic layout repair", isOn: $model.automaticRepair)
+            Text("Double Shift repairs selected text or the previous word manually.")
+                .font(.caption)
+            LabeledContent("Accessibility", value: model.hasAccessibilityAccess ? "Granted" : "Required")
+            LabeledContent("Input Monitoring", value: model.hasInputMonitoringAccess ? "Granted" : "Required")
+            if !model.hasRequiredAccess {
+                Button("Grant Required Access") { model.requestPermissions() }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 380, height: 240)
+        .padding()
+        .onAppear { model.refreshPermissions() }
     }
 }
 
@@ -37,11 +66,16 @@ final class NeToModel: ObservableObject {
     }
     @Published private(set) var status = "Ready. Press Shift twice to repair text."
     @Published private(set) var currentLayout: KeyboardLanguage?
+    @Published private(set) var hasAccessibilityAccess = false
+    @Published private(set) var hasInputMonitoringAccess = false
+
+    var hasRequiredAccess: Bool { hasAccessibilityAccess && hasInputMonitoringAccess }
 
     private let keyboard = KeyboardLayoutService()
     private var keyMonitor: Any?
     private var flagsMonitor: Any?
     private var layoutTimer: Timer?
+    private var accessTimer: Timer?
     private var lastShiftRelease: TimeInterval = 0
     private var shiftWasAlone = false
     private var revision = 0
@@ -68,16 +102,22 @@ final class NeToModel: ObservableObject {
                 self.currentLayout = self.keyboard.currentLayout
             }
         }
-        if !AXIsProcessTrusted() || !CGPreflightListenEventAccess() {
-            status = "Accessibility and Input Monitoring access are required."
+        accessTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshPermissions() }
         }
+        refreshPermissions()
+    }
+
+    func refreshPermissions() {
+        hasAccessibilityAccess = AXIsProcessTrusted()
+        hasInputMonitoringAccess = CGPreflightListenEventAccess()
     }
 
     func requestPermissions() {
         let options = ["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary
         AXIsProcessTrustedWithOptions(options)
         CGRequestListenEventAccess()
-        status = "Grant access in System Settings, then restart Ne-To."
+        refreshPermissions()
     }
 
     private func handleKey(_ event: NSEvent) {
