@@ -20,6 +20,7 @@ app="$root/dist/Ne-To.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/NeTo"
 cp "$root/LICENSE" "$root/THIRD_PARTY_DATA.md" "$app/Contents/Resources/"
+ditto "$root/Resources/Sounds" "$app/Contents/Resources/Sounds"
 xcrun actool --compile "$app/Contents/Resources" --platform macosx \
     --minimum-deployment-target 14.0 --app-icon AppIcon \
     --output-partial-info-plist "$root/.build/AppIcon-Info.plist" \

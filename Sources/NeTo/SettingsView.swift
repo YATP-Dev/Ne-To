@@ -38,6 +38,32 @@ struct SettingsView: View {
 
                 Divider()
 
+                settingsGroup(language.text("Switching sound", "Звук переключения")) {
+                    Toggle(language.text("Play sound after repair", "Воспроизводить звук после исправления"),
+                           isOn: $model.playSound)
+                    HStack {
+                        Picker(language.text("Sound", "Звук"), selection: $model.switchSound) {
+                            ForEach(SwitchSound.allCases) { sound in
+                                Text(sound.title(in: language)).tag(sound)
+                            }
+                        }
+                        Button(language.text("Preview", "Прослушать")) {
+                            model.previewSwitchSound()
+                        }
+                    }
+                    .disabled(!model.playSound)
+                    HStack {
+                        Text(language.text("Volume", "Громкость"))
+                        Slider(value: $model.switchSoundVolume, in: 0...1, step: 0.01)
+                        Text("\(Int((model.switchSoundVolume * 100).rounded()))%")
+                            .monospacedDigit()
+                            .frame(width: 42, alignment: .trailing)
+                    }
+                    .disabled(!model.playSound)
+                }
+
+                Divider()
+
                 settingsGroup(language.text("Manual repair", "Ручное исправление")) {
                     shortcutRow(language.text("Previous word", "Предыдущее слово"), action: .previousWord)
                     shortcutRow(language.text("Selected text", "Выделенный текст"), action: .selection)

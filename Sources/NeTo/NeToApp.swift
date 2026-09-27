@@ -52,6 +52,15 @@ final class NeToModel: ObservableObject {
     @Published var automaticRepair: Bool {
         didSet { UserDefaults.standard.set(automaticRepair, forKey: "automaticRepair") }
     }
+    @Published var playSound: Bool {
+        didSet { UserDefaults.standard.set(playSound, forKey: "playSound") }
+    }
+    @Published var switchSound: SwitchSound {
+        didSet { UserDefaults.standard.set(switchSound.rawValue, forKey: "switchSound") }
+    }
+    @Published var switchSoundVolume: Double {
+        didSet { UserDefaults.standard.set(switchSoundVolume, forKey: "switchSoundVolume") }
+    }
     @Published private(set) var status = AppStatus.ready
     @Published private(set) var currentLayout: KeyboardLanguage?
     @Published private(set) var hasAccessibilityAccess = false
@@ -68,6 +77,7 @@ final class NeToModel: ObservableObject {
     var hasRequiredAccess: Bool { hasAccessibilityAccess && hasInputMonitoringAccess }
 
     private let keyboard = KeyboardLayoutService()
+    private let switchSoundPlayer = SwitchSoundPlayer()
     private var keyMonitor: Any?
     private var flagsMonitor: Any?
     private var layoutTimer: Timer?
@@ -82,6 +92,10 @@ final class NeToModel: ObservableObject {
     init() {
         interfaceLanguage = .saved
         automaticRepair = UserDefaults.standard.object(forKey: "automaticRepair") as? Bool ?? true
+        playSound = UserDefaults.standard.object(forKey: "playSound") as? Bool ?? true
+        switchSound = SwitchSound(rawValue: UserDefaults.standard.string(forKey: "switchSound") ?? "") ?? .shutter
+        let savedVolume = UserDefaults.standard.object(forKey: "switchSoundVolume") as? Double ?? 1
+        switchSoundVolume = savedVolume.isFinite ? min(1, max(0, savedVolume)) : 1
         previousWordShortcut = Self.savedShortcut(for: .previousWord)
         selectionShortcut = Self.savedShortcut(for: .selection)
         UserDefaults.standard.removeObject(forKey: "previousWordShortcut")
@@ -221,6 +235,15 @@ final class NeToModel: ObservableObject {
         customWords = CustomDictionary.words
     }
 
+    func previewSwitchSound() {
+        playSwitchSoundIfEnabled()
+    }
+
+    private func playSwitchSoundIfEnabled() {
+        guard playSound else { return }
+        switchSoundPlayer.play(switchSound, volume: switchSoundVolume)
+    }
+
     @discardableResult
     func addExcludedApplications(_ urls: [URL]) -> Bool {
         guard ApplicationExclusions.add(urls) else { return false }
@@ -300,6 +323,7 @@ final class NeToModel: ObservableObject {
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
         status = .repaired(conversion.source, conversion.target)
+        playSwitchSoundIfEnabled()
     }
 
     private func repairAutomatically(in processID: pid_t?) {
@@ -315,6 +339,7 @@ final class NeToModel: ObservableObject {
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
         status = .repaired(conversion.source, conversion.target)
+        playSwitchSoundIfEnabled()
     }
 
     private func repairPhraseAutomatically(in processID: pid_t?) {
@@ -329,5 +354,6 @@ final class NeToModel: ObservableObject {
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
         status = .repaired(conversion.source, conversion.target)
+        playSwitchSoundIfEnabled()
     }
 }
