@@ -53,6 +53,32 @@ struct FocusedText {
             && value == current.value
     }
 
+    func replaceDirectly(range: NSRange, with replacement: String) -> Bool {
+        guard selection.length == 0,
+              range.location >= 0, range.length > 0,
+              range.location + range.length <= (value as NSString).length,
+              isStillCurrent() else { return false }
+        var rangeSettable = DarwinBoolean(false)
+        var textSettable = DarwinBoolean(false)
+        guard AXUIElementIsAttributeSettable(element, kAXSelectedTextRangeAttribute as CFString, &rangeSettable) == .success,
+              rangeSettable.boolValue,
+              AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &textSettable) == .success,
+              textSettable.boolValue else { return false }
+        var selectedRange = CFRange(location: range.location, length: range.length)
+        guard let selectedValue = AXValueCreate(.cfRange, &selectedRange),
+              AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selectedValue) == .success else {
+            return false
+        }
+        let result = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString,
+                                                  replacement as CFString)
+        let delta = (replacement as NSString).length - range.length
+        var restoredCaret = CFRange(location: selection.location + (result == .success ? delta : 0), length: 0)
+        if let caretValue = AXValueCreate(.cfRange, &restoredCaret) {
+            AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, caretValue)
+        }
+        return result == .success
+    }
+
     var prefix: String {
         (value as NSString).substring(to: selection.location)
     }

@@ -291,7 +291,9 @@ final class NeToModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(350))
             guard expectedRevision == revision,
                   NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else { return }
-            repairPhraseAutomatically(in: processID)
+            guard !repairPhraseAutomatically(in: processID),
+                  !repairContextualLetterAutomatically(in: processID) else { return }
+            repairRecentCompletedWordAutomatically(in: processID)
         }
         guard [49, 36, 76].contains(Int(event.keyCode)) else { return }
         Task { @MainActor in
@@ -342,18 +344,53 @@ final class NeToModel: ObservableObject {
         playSwitchSoundIfEnabled()
     }
 
-    private func repairPhraseAutomatically(in processID: pid_t?) {
+    private func repairPhraseAutomatically(in processID: pid_t?) -> Bool {
         guard CGEventSource.flagsState(.combinedSessionState).intersection(KeyChord.modifierMask).isEmpty,
               let processID, !isAutomaticRepairExcluded(processID),
               let snapshot = FocusedText.read(), snapshot.processID == processID,
               snapshot.selection.length == 0,
               let line = snapshot.prefix.split(separator: "\n", omittingEmptySubsequences: false).last,
               let conversion = PhraseDecision.candidate(for: String(line)),
-              snapshot.isStillCurrent() else { return }
+              snapshot.isStillCurrent() else { return false }
         KeyboardReplacement.replace(backspaces: line.utf16.count, with: conversion.output)
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
         status = .repaired(conversion.source, conversion.target)
         playSwitchSoundIfEnabled()
+        return true
+    }
+
+    private func repairContextualLetterAutomatically(in processID: pid_t?) -> Bool {
+        guard let processID, !isAutomaticRepairExcluded(processID),
+              let snapshot = FocusedText.read(), snapshot.processID == processID,
+              let candidate = ContextualLetterDecision.candidate(in: snapshot.prefix),
+              snapshot.replaceDirectly(range: candidate.range, with: candidate.replacement) else { return false }
+        status = .repaired(.english, .russian)
+        playSwitchSoundIfEnabled()
+        return true
+    }
+
+    private func repairRecentCompletedWordAutomatically(in processID: pid_t?) {
+        guard let processID, !isAutomaticRepairExcluded(processID),
+              let snapshot = FocusedText.read(), snapshot.processID == processID,
+              snapshot.selection.length == 0 else { return }
+        for candidate in WordBoundary.recentCompletedWords(in: snapshot.prefix) {
+            guard let conversion = AutomaticDecision.candidate(for: candidate.word) else { continue }
+            let location = snapshot.selection.location
+                - candidate.trailing.utf16.count - candidate.word.utf16.count
+            guard location >= 0,
+                  snapshot.replaceDirectly(
+                    range: NSRange(location: location, length: candidate.word.utf16.count),
+                    with: conversion.output
+                  ) else { return }
+            if candidate.trailing.dropFirst().allSatisfy({ !$0.isLetter }),
+               keyboard.currentLayout == conversion.source {
+                keyboard.select(conversion.target)
+            }
+            currentLayout = keyboard.currentLayout
+            status = .repaired(conversion.source, conversion.target)
+            playSwitchSoundIfEnabled()
+            return
+        }
     }
 }

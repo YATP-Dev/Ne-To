@@ -41,6 +41,21 @@ enum LayoutConversion {
 }
 
 enum WordBoundary {
+    static func recentCompletedWords(in prefix: String, maxTrailingCharacters: Int = 32) -> [(word: String, trailing: String)] {
+        let characters = Array(prefix)
+        guard !characters.isEmpty else { return [] }
+        var result: [(word: String, trailing: String)] = []
+        for index in characters.indices.reversed() {
+            guard characters[index] == " " || characters[index] == "\n" else { continue }
+            let trailing = String(characters[index...])
+            guard trailing.count <= maxTrailingCharacters else { break }
+            if let word = precedingWord(in: String(characters[...index]), allowDelimiter: true) {
+                result.append((word, trailing))
+            }
+        }
+        return result
+    }
+
     static func precedingWord(in prefix: String, allowDelimiter: Bool) -> String? {
         var characters = Array(prefix)
         if allowDelimiter {

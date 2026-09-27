@@ -19,6 +19,9 @@ import Testing
     #expect(AutomaticDecision.candidate(for: "e;by")?.output == "ужин")
     #expect(AutomaticDecision.candidate(for: "k.lb")?.output == "люди")
     #expect(AutomaticDecision.candidate(for: "work.") == nil)
+    let recent = WordBoundary.recentCompletedWords(in: "ye -")
+    #expect(recent.first?.word == "ye")
+    #expect(recent.first?.trailing == " -")
 }
 
 @MainActor
@@ -48,4 +51,13 @@ import Testing
     #expect(PhraseDecision.candidate(for: "Ye z yt pyf") == nil)
     #expect(PhraseDecision.candidate(for: "A small cafe opens near the park.") == nil)
     #expect(PhraseDecision.candidate(for: "В парке дети играют.") == nil)
+    #expect(ContextualLetterDecision.candidate(in: "Z например")?.replacement == "Я")
+    #expect(ContextualLetterDecision.candidate(in: "F как можем проверить")?.replacement == "А")
+    #expect(ContextualLetterDecision.candidate(in: "J!")?.replacement == "О")
+    #expect(ContextualLetterDecision.candidate(in: "J! вот это шляпа!")?.replacement == "О")
+    #expect(ContextualLetterDecision.candidate(in: "А вот J! уже нет")?.replacement == "О")
+    #expect(ContextualLetterDecision.candidate(in: "А вот J! уже нет")?.range.location == 6)
+    #expect(ContextualLetterDecision.candidate(in: "Z English sentence") == nil)
+    #expect(ContextualLetterDecision.candidate(in: "The J! show") == nil)
+    #expect(ContextualLetterDecision.candidate(in: "A example") == nil)
 }
