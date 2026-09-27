@@ -6,61 +6,85 @@ struct SettingsView: View {
     @State private var dictionaryMessage: String?
 
     var body: some View {
-        Form {
-            Section("General") {
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { model.launchAtLogin },
-                    set: { model.setLaunchAtLogin($0) }
-                ))
-                if let message = model.launchAtLoginMessage {
-                    Text(message).font(.caption).foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                settingsGroup("General") {
+                    Toggle("Launch at Login", isOn: Binding(
+                        get: { model.launchAtLogin },
+                        set: { model.setLaunchAtLogin($0) }
+                    ))
+                    if let message = model.launchAtLoginMessage {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Toggle("Automatic layout repair", isOn: $model.automaticRepair)
                 }
-                Toggle("Automatic layout repair", isOn: $model.automaticRepair)
-            }
 
-            Section("Manual repair") {
-                LabeledContent("Shortcut", value: "Double Shift")
-                Text("Repairs selected text, or the previous word when nothing is selected.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+                Divider()
 
-            Section("Custom dictionary") {
-                Text("These local words are protected from automatic replacement and can be accepted as converted words.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    TextField("Add a word or brand", text: $newWord)
-                        .onSubmit(addWord)
-                    Button("Add", action: addWord)
-                        .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                settingsGroup("Manual repair") {
+                    settingRow("Shortcut", value: "Double Shift")
+                    Text("Repairs selected text, or the previous word when nothing is selected.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                if let dictionaryMessage {
-                    Text(dictionaryMessage).font(.caption).foregroundStyle(.red)
-                }
-                ForEach(model.customWords, id: \.self) { word in
+
+                Divider()
+
+                settingsGroup("Custom dictionary") {
+                    Text("Custom words stay on this Mac. They are protected from automatic replacement and can be accepted as converted words.")
+                        .font(.caption).foregroundStyle(.secondary)
                     HStack {
-                        Text(word)
-                        Spacer()
-                        Button("Remove", systemImage: "minus.circle") { model.removeCustomWord(word) }
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("Remove \(word)")
+                        TextField("Add a word or brand", text: $newWord)
+                            .onSubmit(addWord)
+                        Button("Add", action: addWord)
+                            .disabled(newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    if let dictionaryMessage {
+                        Text(dictionaryMessage).font(.caption).foregroundStyle(.red)
+                    }
+                    ForEach(model.customWords, id: \.self) { word in
+                        HStack {
+                            Text(word)
+                            Spacer()
+                            Button("Remove", systemImage: "minus.circle") { model.removeCustomWord(word) }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Remove \(word)")
+                        }
+                    }
+                }
+
+                Divider()
+
+                settingsGroup("Access") {
+                    settingRow("Accessibility", value: model.hasAccessibilityAccess ? "Granted" : "Required")
+                    settingRow("Input Monitoring", value: model.hasInputMonitoringAccess ? "Granted" : "Required")
+                    if !model.hasRequiredAccess {
+                        Button("Grant Required Access") { model.requestPermissions() }
                     }
                 }
             }
-
-            Section("Access") {
-                LabeledContent("Accessibility", value: model.hasAccessibilityAccess ? "Granted" : "Required")
-                LabeledContent("Input Monitoring", value: model.hasInputMonitoringAccess ? "Granted" : "Required")
-                if !model.hasRequiredAccess {
-                    Button("Grant Required Access") { model.requestPermissions() }
-                }
-            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .formStyle(.grouped)
-        .frame(width: 510, height: 520)
+        .frame(width: 520, height: 500)
         .onAppear {
             model.refreshPermissions()
             model.refreshLaunchAtLogin()
+        }
+    }
+
+    private func settingsGroup<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            content()
+        }
+    }
+
+    private func settingRow(_ title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value).foregroundStyle(.secondary)
         }
     }
 
