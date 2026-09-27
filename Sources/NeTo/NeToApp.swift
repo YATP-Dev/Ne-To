@@ -11,27 +11,37 @@ struct NeToApp: App {
     var body: some Scene {
         MenuBarExtra {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Ne-To").font(.headline)
+                Text("Ne-To").font(.system(size: 15, weight: .semibold))
                 Text(model.status.text(in: model.interfaceLanguage))
-                    .font(.caption).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
                 if !model.hasRequiredAccess {
                     Text(AppStatus.accessRequired.text(in: model.interfaceLanguage))
-                        .font(.caption)
+                        .font(.system(size: 13))
                     Button(model.interfaceLanguage.text("Grant Required Access", "Предоставить доступ")) {
                         model.requestPermissions()
                     }
                 }
-                Button(model.interfaceLanguage.text("Settings…", "Настройки…")) { openSettings() }
+                Button(model.interfaceLanguage.text("Settings…", "Настройки…")) {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openSettings()
+                    DispatchQueue.main.async {
+                        NSApp.activate(ignoringOtherApps: true)
+                        NSApp.windows.first {
+                            $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window"
+                        }?.makeKeyAndOrderFront(nil)
+                    }
+                }
                 Text(model.interfaceLanguage.text("Press Shift twice to repair selected text or the previous word.",
                                                   "Дважды нажмите Shift, чтобы исправить выделенный текст или предыдущее слово."))
-                    .font(.caption)
+                    .font(.system(size: 13))
                 Divider()
                 Button(model.interfaceLanguage.text("Quit Ne-To", "Завершить Ne-To")) {
                     NSApplication.shared.terminate(nil)
                 }
             }
+            .font(.system(size: 14))
             .padding(14)
-            .frame(width: 300)
+            .frame(width: 340)
             .onAppear { model.start(); model.refreshPermissions() }
         } label: {
             Text(model.currentLayout?.rawValue ?? "EN/RU")

@@ -30,7 +30,7 @@ struct SettingsView: View {
                         set: { model.setLaunchAtLogin($0) }
                     ))
                     if let message = model.launchAtLoginMessage {
-                        Text(message.text(in: language)).font(.caption).foregroundStyle(.secondary)
+                        Text(message.text(in: language)).font(.system(size: 13)).foregroundStyle(.secondary)
                     }
                     Toggle(language.text("Automatic layout repair", "Автоматически исправлять раскладку"),
                            isOn: $model.automaticRepair)
@@ -71,9 +71,9 @@ struct SettingsView: View {
                         "Click a shortcut and press a key with any modifier. You can also double-tap a modifier. Esc cancels. Both actions default to Double Shift.",
                         "Нажмите на сочетание и введите клавишу с модификатором или дважды нажмите модификатор. Esc отменяет запись. По умолчанию — двойной Shift."
                     ))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                     if let message = model.shortcutMessage {
-                        Text(message.text(in: language)).font(.caption).foregroundStyle(.red)
+                        Text(message.text(in: language)).font(.system(size: 13)).foregroundStyle(.red)
                     }
                 }
 
@@ -84,7 +84,7 @@ struct SettingsView: View {
                         "Custom words stay on this Mac. They are protected from automatic replacement and can be accepted as converted words.",
                         "Добавленные слова хранятся только на этом Mac. Они защищены от автоматической замены и могут использоваться как результат исправления."
                     ))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                     HStack {
                         TextField(language.text("Add a word", "Добавьте слово"), text: $newWord)
                             .onSubmit(addWord)
@@ -93,12 +93,12 @@ struct SettingsView: View {
                     }
                     if dictionaryError {
                         Text(language.text("Enter a new word of 2–40 letters.", "Введите новое слово длиной от 2 до 40 букв."))
-                            .font(.caption).foregroundStyle(.red)
+                            .font(.system(size: 13)).foregroundStyle(.red)
                     }
                     ScrollView {
                         if model.customWords.isEmpty {
                             Text(language.text("No custom words yet", "Слов пока нет"))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.system(size: 13)).foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else {
                             TagFlowLayout(spacing: 8) {
@@ -108,12 +108,12 @@ struct SettingsView: View {
                                         Button {
                                             model.removeCustomWord(word)
                                         } label: {
-                                            Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                                            Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
                                         }
                                         .buttonStyle(.plain)
                                         .accessibilityLabel(language.text("Remove \(word)", "Удалить \(word)"))
                                     }
-                                    .font(.caption)
+                                    .font(.system(size: 13))
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
                                     .background(.quaternary, in: Capsule())
@@ -133,16 +133,16 @@ struct SettingsView: View {
                         "Ne-To will not change the keyboard layout automatically in these apps. Manual repair still works.",
                         "В этих приложениях Ne-To не исправляет раскладку автоматически. Ручное исправление продолжит работать."
                     ))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                     Button(language.text("Add Application…", "Добавить приложение…"), action: chooseApplications)
                     if applicationError {
                         Text(language.text("Choose an application with a valid bundle identifier.",
                                            "Выберите приложение с корректным идентификатором."))
-                            .font(.caption).foregroundStyle(.red)
+                            .font(.system(size: 13)).foregroundStyle(.red)
                     }
                     if model.excludedApplications.isEmpty {
                         Text(language.text("No excluded applications", "Исключений пока нет"))
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
                     } else {
                         ScrollView {
                             VStack(spacing: 0) {
@@ -151,7 +151,7 @@ struct SettingsView: View {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(application.name)
                                             Text(application.bundleID)
-                                                .font(.caption2).foregroundStyle(.secondary)
+                                                .font(.system(size: 12)).foregroundStyle(.secondary)
                                         }
                                         Spacer()
                                         Button {
@@ -190,14 +190,19 @@ struct SettingsView: View {
                     }
                 }
             }
+            .font(.system(size: 14))
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(width: 520, height: 500)
+        .frame(width: 560, height: 540)
         .onAppear {
             model.refreshPermissions()
             model.refreshLaunchAtLogin()
             updateWindowTitle()
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows.first {
+                $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window"
+            }?.makeKeyAndOrderFront(nil)
         }
         .onChange(of: model.interfaceLanguage) { _, _ in updateWindowTitle() }
         .onDisappear { model.cancelShortcutRecording() }
@@ -222,7 +227,7 @@ struct SettingsView: View {
 
     private func settingsGroup<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.headline)
+            Text(title).font(.system(size: 15, weight: .semibold))
             content()
         }
     }
