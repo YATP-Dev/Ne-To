@@ -2,3 +2,10 @@
 dist/
 .DS_Store
 *.xcuserstate
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.mobileprovision
+*.log
