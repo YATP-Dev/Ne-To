@@ -3,19 +3,22 @@ import AppKit
 @MainActor
 enum AutomaticDecision {
     static func candidate(for word: String) -> Conversion? {
+        let lower = word.lowercased()
+        let titlecased = String(word.prefix(1)).uppercased() + String(word.dropFirst()).lowercased()
         guard word.count >= 2, word.count <= 40,
-              word == word.lowercased(),
+              word == lower || word == titlecased,
               !CustomDictionary.contains(word),
               let conversion = LayoutConversion.convert(word),
-              conversion.output.allSatisfy(\.isLetter) else { return nil }
+              conversion.output.allSatisfy(\.isLetter),
+              let lowerConversion = LayoutConversion.convert(lower) else { return nil }
         let checker = NSSpellChecker.shared
         guard let source = language(for: conversion.source, available: checker.availableLanguages),
               let target = language(for: conversion.target, available: checker.availableLanguages),
-              (!isCorrect(word, language: source, checker: checker)
+              (!isCorrect(lower, language: source, checker: checker)
                   || word.contains(where: { !$0.isLetter })
-                  || ShortWordFrequency.stronglyFavors(conversion)),
+                  || ShortWordFrequency.stronglyFavors(lowerConversion)),
               (CustomDictionary.contains(conversion.output)
-                  || isCorrect(conversion.output, language: target, checker: checker)) else { return nil }
+                  || isCorrect(conversion.output.lowercased(), language: target, checker: checker)) else { return nil }
         return conversion
     }
 

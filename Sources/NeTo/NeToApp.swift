@@ -235,10 +235,16 @@ final class NeToModel: ObservableObject {
         if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == KeyboardReplacement.eventTag { return }
         revision &+= 1
         doubleTap.keyPressed()
-        guard automaticRepair, !event.isARepeat,
-              [49, 36, 76].contains(Int(event.keyCode)) else { return }
+        guard automaticRepair, !event.isARepeat else { return }
         let expectedRevision = revision
         let processID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard expectedRevision == revision,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else { return }
+            repairPhraseAutomatically(in: processID)
+        }
+        guard [49, 36, 76].contains(Int(event.keyCode)) else { return }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(60))
             guard expectedRevision == revision,
@@ -275,13 +281,25 @@ final class NeToModel: ObservableObject {
     private func repairAutomatically(in processID: pid_t?) {
         guard let processID, let snapshot = FocusedText.read(), snapshot.processID == processID,
               snapshot.selection.length == 0,
-              snapshot.selection.location == (snapshot.value as NSString).length,
               let delimiter = snapshot.prefix.last, delimiter == " " || delimiter == "\n",
               let word = WordBoundary.precedingWord(in: snapshot.prefix, allowDelimiter: true),
               let conversion = AutomaticDecision.candidate(for: word),
               snapshot.isStillCurrent() else { return }
         KeyboardReplacement.replace(backspaces: word.utf16.count + 1,
                                     with: conversion.output + String(delimiter))
+        keyboard.select(conversion.target)
+        currentLayout = keyboard.currentLayout
+        status = "Repaired \(conversion.source.rawValue) → \(conversion.target.rawValue)."
+    }
+
+    private func repairPhraseAutomatically(in processID: pid_t?) {
+        guard CGEventSource.flagsState(.combinedSessionState).intersection(KeyChord.modifierMask).isEmpty,
+              let processID, let snapshot = FocusedText.read(), snapshot.processID == processID,
+              snapshot.selection.length == 0,
+              let line = snapshot.prefix.split(separator: "\n", omittingEmptySubsequences: false).last,
+              let conversion = PhraseDecision.candidate(for: String(line)),
+              snapshot.isStillCurrent() else { return }
+        KeyboardReplacement.replace(backspaces: line.utf16.count, with: conversion.output)
         keyboard.select(conversion.target)
         currentLayout = keyboard.currentLayout
         status = "Repaired \(conversion.source.rawValue) → \(conversion.target.rawValue)."

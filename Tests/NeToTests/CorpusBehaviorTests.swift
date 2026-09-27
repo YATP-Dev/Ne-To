@@ -55,3 +55,22 @@ private let sampleParagraphs: [(language: String, text: String)] = [
     #expect(recovered >= 110)
     #expect(missed.isEmpty, "Missed corrections: \(missed)")
 }
+
+@MainActor
+@Test func naturalPhrasesRemainUntouched() {
+    var unexpected: [String] = []
+    for paragraph in sampleParagraphs {
+        let words = paragraph.text.split(separator: " ").map(String.init)
+        for start in words.indices {
+            let maxLength = min(6, words.count - start)
+            guard maxLength >= 3 else { continue }
+            for length in 3...maxLength {
+                let phrase = words[start..<(start + length)].joined(separator: " ") + " "
+                if let conversion = PhraseDecision.candidate(for: phrase) {
+                    unexpected.append("\(phrase) → \(conversion.output)")
+                }
+            }
+        }
+    }
+    #expect(unexpected.isEmpty, "Unexpected phrase changes: \(unexpected)")
+}

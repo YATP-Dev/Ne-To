@@ -28,6 +28,8 @@ import Testing
     #expect(AutomaticDecision.candidate(for: "рш")?.output == "hi")
     #expect(AutomaticDecision.candidate(for: "yt")?.output == "не")
     #expect(AutomaticDecision.candidate(for: "ye")?.output == "ну")
+    #expect(AutomaticDecision.candidate(for: "Ye")?.output == "Ну")
+    #expect(AutomaticDecision.candidate(for: "pyf.")?.output == "знаю")
     #expect(AutomaticDecision.candidate(for: "bp") == nil)
     #expect(AutomaticDecision.candidate(for: "kb") == nil)
     #expect(AutomaticDecision.candidate(for: "vs") == nil)
@@ -38,4 +40,12 @@ import Testing
     #expect(AutomaticDecision.candidate(for: "ну") == nil)
     #expect(AutomaticDecision.candidate(for: "hello") == nil)
     #expect(AutomaticDecision.candidate(for: "im") == nil)
+}
+
+@MainActor
+@Test func repairsStrongWrongLayoutPhraseWithoutChangingNormalText() {
+    #expect(PhraseDecision.candidate(for: "Ye z yt pyf.")?.output == "Ну я не знаю")
+    #expect(PhraseDecision.candidate(for: "Ye z yt pyf") == nil)
+    #expect(PhraseDecision.candidate(for: "A small cafe opens near the park.") == nil)
+    #expect(PhraseDecision.candidate(for: "В парке дети играют.") == nil)
 }
