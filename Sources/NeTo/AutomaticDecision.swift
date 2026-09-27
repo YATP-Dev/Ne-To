@@ -11,6 +11,7 @@ enum AutomaticDecision {
         guard let source = language(for: conversion.source, available: checker.availableLanguages),
               let target = language(for: conversion.target, available: checker.availableLanguages),
               (!isCorrect(word, language: source, checker: checker)
+                  || word.contains(where: { !$0.isLetter })
                   || ShortWordFrequency.stronglyFavors(conversion)),
               isCorrect(conversion.output, language: target, checker: checker) else { return nil }
         return conversion

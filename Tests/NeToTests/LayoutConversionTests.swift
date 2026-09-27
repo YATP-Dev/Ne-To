@@ -7,10 +7,18 @@ import Testing
     #expect(LayoutConversion.convert("hello")?.output == "руддщ")
 }
 
+@MainActor
 @Test func rejectsMixedScriptAndTechnicalBoundaries() {
     #expect(LayoutConversion.convert("helло") == nil)
     #expect(WordBoundary.precedingWord(in: "mail@example ", allowDelimiter: true) == nil)
+    #expect(WordBoundary.precedingWord(in: "mail@example.com ", allowDelimiter: true) == nil)
+    #expect(WordBoundary.precedingWord(in: "https://example.com ", allowDelimiter: true) == nil)
     #expect(WordBoundary.precedingWord(in: "ghbdtn ", allowDelimiter: true) == "ghbdtn")
+    #expect(WordBoundary.precedingWord(in: "e;by ", allowDelimiter: true) == "e;by")
+    #expect(WordBoundary.precedingWord(in: "k.lb", allowDelimiter: false) == "k.lb")
+    #expect(AutomaticDecision.candidate(for: "e;by")?.output == "ужин")
+    #expect(AutomaticDecision.candidate(for: "k.lb")?.output == "люди")
+    #expect(AutomaticDecision.candidate(for: "work.") == nil)
 }
 
 @MainActor

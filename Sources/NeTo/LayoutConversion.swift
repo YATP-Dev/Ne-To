@@ -47,7 +47,9 @@ enum WordBoundary {
             guard let last = characters.last, last == " " || last == "\n" else { return nil }
             characters.removeLast()
         }
-        let word = String(characters.reversed().prefix { $0.isLetter }.reversed())
+        // Russian letters such as ж, х, б, and ю land on punctuation keys
+        // when typed using the English layout.
+        let word = String(characters.reversed().prefix { $0.isLetter || "`[];',.".contains($0) }.reversed())
         guard !word.isEmpty, word.count <= 64 else { return nil }
         if characters.count > word.count {
             let before = characters[characters.count - word.count - 1]
