@@ -19,8 +19,10 @@ import Testing
     #expect(AutomaticDecision.candidate(for: "руддщ")?.output == "hello")
     #expect(AutomaticDecision.candidate(for: "рш")?.output == "hi")
     #expect(AutomaticDecision.candidate(for: "yt")?.output == "не")
+    #expect(AutomaticDecision.candidate(for: "ye")?.output == "ну")
     #expect(AutomaticDecision.candidate(for: "hi") == nil)
     #expect(AutomaticDecision.candidate(for: "не") == nil)
+    #expect(AutomaticDecision.candidate(for: "ну") == nil)
     #expect(AutomaticDecision.candidate(for: "hello") == nil)
     #expect(AutomaticDecision.candidate(for: "im") == nil)
 }

@@ -10,7 +10,8 @@ enum AutomaticDecision {
         let checker = NSSpellChecker.shared
         guard let source = language(for: conversion.source, available: checker.availableLanguages),
               let target = language(for: conversion.target, available: checker.availableLanguages),
-              !isCorrect(word, language: source, checker: checker),
+              (!isCorrect(word, language: source, checker: checker)
+                  || (word == "ye" && conversion.output == "ну")),
               isCorrect(conversion.output, language: target, checker: checker) else { return nil }
         return conversion
     }

@@ -5,7 +5,7 @@ Ne-To is a small macOS menu bar app that repairs words typed in the wrong Englis
 ## Features
 
 - Press **Shift twice** to convert selected text or the word immediately before the caret. The app then selects the matching EN or RU input source.
-- Optional automatic repair after **Space** or **Return**, including two-letter words such as `рш` → `hi` and `yt` → `не`. It changes a lowercase word only when the macOS spelling dictionaries reject the source and accept the converted word. Ambiguous words, technical text, mixed scripts, unavailable text fields, and secure input are skipped.
+- Optional automatic repair after **Space** or **Return**, including two-letter words such as `рш` → `hi`, `yt` → `не`, and `ye` → `ну`. It changes a lowercase word when the macOS spelling dictionaries reject the source and accept the converted word. `ye` → `ну` is a specific exception because macOS also accepts `ye` as English. Other ambiguous words, technical text, mixed scripts, unavailable text fields, and secure input are skipped.
 - Automatic repair is enabled by default and can be switched off in the menu bar.
 
 The physical key map covers the standard English and Russian layouts. Manual repair requires a readable Accessibility text field. Some applications do not expose their text or reject synthesized keyboard events; Ne-To skips fields it cannot verify. Automatic repair is deliberately conservative and does not use approximate spell checking.
