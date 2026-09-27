@@ -5,6 +5,7 @@ enum AutomaticDecision {
     static func candidate(for word: String) -> Conversion? {
         guard word.count >= 2, word.count <= 40,
               word == word.lowercased(),
+              !CustomDictionary.contains(word),
               let conversion = LayoutConversion.convert(word),
               conversion.output.allSatisfy(\.isLetter) else { return nil }
         let checker = NSSpellChecker.shared
@@ -13,7 +14,8 @@ enum AutomaticDecision {
               (!isCorrect(word, language: source, checker: checker)
                   || word.contains(where: { !$0.isLetter })
                   || ShortWordFrequency.stronglyFavors(conversion)),
-              isCorrect(conversion.output, language: target, checker: checker) else { return nil }
+              (CustomDictionary.contains(conversion.output)
+                  || isCorrect(conversion.output, language: target, checker: checker)) else { return nil }
         return conversion
     }
 
