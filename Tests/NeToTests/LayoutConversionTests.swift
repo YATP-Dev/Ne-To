@@ -16,6 +16,7 @@ import Testing
 @MainActor
 @Test func automaticRepairNeedsDictionaryAgreement() {
     #expect(AutomaticDecision.candidate(for: "ghbdtn")?.output == "привет")
+    #expect(AutomaticDecision.candidate(for: "руддщ")?.output == "hello")
     #expect(AutomaticDecision.candidate(for: "hello") == nil)
     #expect(AutomaticDecision.candidate(for: "im") == nil)
 }

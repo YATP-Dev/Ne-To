@@ -5,7 +5,7 @@ import SwiftUI
 
 @main
 struct NeToApp: App {
-    @StateObject private var model = NeToModel()
+    @StateObject private var model = NeToModel.shared
 
     var body: some Scene {
         MenuBarExtra {
@@ -31,6 +31,7 @@ struct NeToApp: App {
 
 @MainActor
 final class NeToModel: ObservableObject {
+    static let shared = NeToModel()
     @Published var automaticRepair: Bool {
         didSet { UserDefaults.standard.set(automaticRepair, forKey: "automaticRepair") }
     }
