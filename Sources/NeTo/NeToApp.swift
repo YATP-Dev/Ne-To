@@ -87,6 +87,7 @@ final class NeToModel: ObservableObject {
     private var recordingDoubleTap = DoubleTapDetector()
     private var doubleTap = DoubleTapDetector()
     private var revision = 0
+    private var automaticKeyboardRepairInProgress = false
     private var started = false
 
     init() {
@@ -261,6 +262,9 @@ final class NeToModel: ObservableObject {
                                        in: excludedApplications)
     }
 
+    private func isChatGPT(_ processID: pid_t) -> Bool {
+        NSRunningApplication(processIdentifier: processID)?.bundleIdentifier == "com.openai.codex"
+    }
 
     func refreshPermissions() {
         hasAccessibilityAccess = AXIsProcessTrusted()
@@ -297,10 +301,14 @@ final class NeToModel: ObservableObject {
         }
         guard [49, 36, 76].contains(Int(event.keyCode)) else { return }
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(60))
+            try? await Task.sleep(for: .milliseconds(30))
             guard expectedRevision == revision,
                   NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else { return }
-            repairAutomatically(in: processID)
+            if let processID, isChatGPT(processID) {
+                repairRecentCompletedWordAutomatically(in: processID)
+            } else {
+                repairAutomatically(in: processID)
+            }
         }
     }
 
@@ -373,7 +381,8 @@ final class NeToModel: ObservableObject {
     }
 
     private func repairRecentCompletedWordAutomatically(in processID: pid_t?) {
-        guard let processID, !isAutomaticRepairExcluded(processID) else { return }
+        guard let processID, !isAutomaticRepairExcluded(processID),
+              !automaticKeyboardRepairInProgress else { return }
         guard let snapshot = FocusedText.read(), snapshot.processID == processID,
               snapshot.selection.length == 0 else { return }
         for candidate in WordBoundary.recentCompletedWords(in: snapshot.prefix) {
@@ -382,6 +391,14 @@ final class NeToModel: ObservableObject {
                 - candidate.trailing.utf16.count - candidate.word.utf16.count
             guard location >= 0 else { return }
             let range = NSRange(location: location, length: candidate.word.utf16.count)
+            // This editor reports its selection but does not let Accessibility set it.
+            if isChatGPT(processID), candidate.trailing.count == 1,
+               snapshot.isStillCurrent() {
+                repairUsingKeyboardSelection(snapshot: snapshot, range: range, output: conversion.output,
+                                             source: conversion.source, target: conversion.target,
+                                             trailing: candidate.trailing)
+                return
+            }
             if snapshot.replaceDirectly(range: range, with: conversion.output) {
                 confirmAutomaticRepair(
                     snapshot: snapshot, range: range, output: conversion.output,
@@ -443,36 +460,70 @@ final class NeToModel: ObservableObject {
                                               trailing: String) {
         guard trailing.count == 1,
               trailing.first.map(WordBoundary.isCompletionDelimiter) == true,
-              KeyboardReplacement.selectPreviousCharacters(trailing: 1, length: range.length) else { return }
+              !automaticKeyboardRepairInProgress else { return }
+        automaticKeyboardRepairInProgress = true
+        guard KeyboardReplacement.selectPreviousCharacters(trailing: 1, length: range.length) else {
+            automaticKeyboardRepairInProgress = false
+            return
+        }
         let expectedRevision = revision
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard let self, self.revision == expectedRevision,
-                  let selected = FocusedText.read(), selected.processID == snapshot.processID,
-                  selected.value == snapshot.value,
-                  selected.selection.location == range.location,
-                  selected.selection.length == range.length else { return }
+            guard let self else { return }
+            defer { self.automaticKeyboardRepairInProgress = false }
+            guard await self.waitForFocusedText(processID: snapshot.processID,
+                                                expectedRevision: expectedRevision, matching: { selected in
+                selected.value == snapshot.value
+                    && selected.selection.location == range.location
+                    && selected.selection.length == range.length
+            }) else {
+                self.restoreKeyboardSelectionIfUnchanged(snapshot: snapshot, range: range)
+                return
+            }
             KeyboardReplacement.replace(backspaces: 0, with: output)
             let expectedValue = (snapshot.value as NSString).replacingCharacters(in: range, with: output)
             let expectedCaret = range.location + output.utf16.count
-            try? await Task.sleep(for: .milliseconds(120))
-            guard self.revision == expectedRevision,
-                  let replaced = FocusedText.read(), replaced.processID == snapshot.processID,
-                  replaced.value == expectedValue,
-                  replaced.selection.location == expectedCaret,
-                  replaced.selection.length == 0 else { return }
+            guard await self.waitForFocusedText(processID: snapshot.processID,
+                                                expectedRevision: expectedRevision, matching: { replaced in
+                replaced.value == expectedValue
+                    && replaced.selection.location == expectedCaret
+                    && replaced.selection.length == 0
+            }) else {
+                self.restoreKeyboardSelectionIfUnchanged(snapshot: snapshot, range: range)
+                return
+            }
             KeyboardReplacement.moveRight()
-            try? await Task.sleep(for: .milliseconds(80))
-            guard self.revision == expectedRevision,
-                  let restored = FocusedText.read(), restored.processID == snapshot.processID,
-                  restored.value == expectedValue,
-                  restored.selection.location == expectedCaret + trailing.utf16.count,
-                  restored.selection.length == 0 else { return }
+            guard await self.waitForFocusedText(processID: snapshot.processID,
+                                                expectedRevision: expectedRevision, matching: { restored in
+                restored.value == expectedValue
+                    && restored.selection.location == expectedCaret + trailing.utf16.count
+                    && restored.selection.length == 0
+            }) else { return }
             if self.keyboard.currentLayout == source { self.keyboard.select(target) }
             self.currentLayout = self.keyboard.currentLayout
             self.status = .repaired(source, target)
             self.playSwitchSoundIfEnabled()
         }
+    }
+
+    private func waitForFocusedText(processID: pid_t, expectedRevision: Int,
+                                    matching predicate: (FocusedText) -> Bool) async -> Bool {
+        for _ in 0..<10 {
+            guard revision == expectedRevision,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == processID else { return false }
+            if let current = FocusedText.read(), current.processID == processID,
+               predicate(current) { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return false
+    }
+
+    private func restoreKeyboardSelectionIfUnchanged(snapshot: FocusedText, range: NSRange) {
+        guard let current = FocusedText.read(), current.processID == snapshot.processID,
+              current.value == snapshot.value,
+              current.selection.location == range.location,
+              current.selection.length == range.length else { return }
+        KeyboardReplacement.moveRight()
+        KeyboardReplacement.moveRight()
     }
 
     private func confirmAutomaticRepair(snapshot: FocusedText, range: NSRange, output: String,
